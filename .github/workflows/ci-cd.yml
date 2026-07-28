@@ -86,7 +86,6 @@ jobs:
           - ingestion
           - issues
           - users
-          - smart_qa
           - smartqa-vector-service
 
     steps:
