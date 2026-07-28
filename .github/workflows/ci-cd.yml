@@ -123,8 +123,7 @@ jobs:
             -Dsonar.projectName=smartQA-monoRepo
             -Dsonar.organization=medezzedinebenzbiba
             -Dsonar.sources=services/
-            -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**,**/package-lock.json,**/build-wrapper-dump.json
-            -Dsonar.tests=services/
+            -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**,**/package-lock.json,**/build-wrapper-dump.json,**/Dockerfile
             -Dsonar.javascript.lcov.reportPaths=services/**/coverage/lcov.info
             -Dsonar.python.coverage.reportPaths=services/**/coverage.xml
             -Dsonar.typescript.lcov.reportPaths=services/**/coverage/lcov.info
