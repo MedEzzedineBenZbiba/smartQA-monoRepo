@@ -111,7 +111,7 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io # <-- This was missing
+          SONAR_HOST_URL: https://sonarcloud.io
         with:
           # All properties are passed as a single string – no quoting issues if we avoid spaces
           args: >
