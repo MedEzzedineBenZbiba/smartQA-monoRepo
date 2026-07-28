@@ -1,0 +1,9 @@
+http:
+  middlewares:
+    secure-api:
+      plugin:
+        jwt:
+          issuers:
+            - "http://keycloak:8080/realms/smart_qa_assistant/"
+          # require:
+          #   azp: "my-client-id"

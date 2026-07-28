@@ -1,0 +1,284 @@
+# ================================
+# OS / Editor / System files
+# ================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux / Unix
+*~
+.directory
+*.swp
+*.swo
+*.swo.*
+*.swn
+*.un~
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+*.sublime-*
+*.code-workspace
+*.code-search
+*.code-workspace
+*.code-search
+
+# ================================
+# Logs / temporary files
+# ================================
+
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+*.pid
+*.seed
+*.pid.lock
+
+# ================================
+# Node.js (NestJS, Next.js, etc.)
+# ================================
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json     # Optional: if you prefer to commit it, remove this line
+yarn.lock             # Optional: remove if you commit yarn.lock
+pnpm-lock.yaml        # Optional
+.eslintcache
+*.tsbuildinfo
+
+# Next.js specific
+.next/
+out/
+dist/
+build/
+**/.next/
+**/out/
+
+# NestJS specific
+dist/
+build/
+**/dist/
+**/build/
+
+# Testing / coverage
+coverage/
+.nyc_output/
+*.lcov
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+.env.*.local
+*.env
+*.env.*
+.env.*
+!.env.example
+
+# ================================
+# Python (FastAPI, AI pipeline)
+# ================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+.venv.bak/
+
+# Python distribution / packaging
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib64/
+share/
+man/
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+.testrepository/
+pytestdebug.log
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# ================================
+# Docker & Compose
+# ================================
+
+# Docker volumes / data
+*.pid
+*.pid.lock
+**/data/
+volumes/
+db-data/
+mongo-data/
+mysql-data/
+postgres-data/
+
+# Docker overrides
+docker-compose.override.yml
+docker-compose.*.yml
+!.docker-compose.yml
+
+# Temporary Dockerfiles
+Dockerfile.*
+*.dockerfile
+.dockerignore
+
+# ================================
+# CI/CD / Build tools
+# ================================
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+**/.terraform/
+**/terraform.tfvars
+
+# GitHub Actions local
+*.local.yml
+**/tmp/
+**/temp/
+
+# ================================
+# Secrets / sensitive files
+# ================================
+
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+*.secret
+secrets/
+**/secrets/
+**/private/
+**/credentials/
+**/config.local.*
+**/*_secret.*
+**/secret.*
+
+# ================================
+# Application-specific
+# ================================
+
+# Next.js build cache
+.next/
+out/
+**/.next/
+**/out/
+
+# NestJS build
+**/dist/
+**/build/
+
+# AI pipeline model cache / data
+*.model
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+**/cache/
+**/models/
+**/embeddings/
+
+# ================================
+# Misc (auto-generated, backups)
+# ================================
+
+*.bak
+*.old
+*.orig
+*.tmp
+*.temp
+**/tmp/
+**/temp/
+.DS_Store
+**/.**.swp
+**/.**.swo
+
+# ================================
+# Keep only example env files
+# ================================
+
+!.env.example
+!**/.env.example
