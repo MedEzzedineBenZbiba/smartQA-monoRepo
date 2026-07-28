@@ -111,8 +111,6 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          # If you use SonarCloud, you can omit the next line (it defaults to https://sonarcloud.io)
-          # If you use self-hosted, set SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           # All properties are passed as a single string – no quoting issues if we avoid spaces
           args: >
