@@ -109,14 +109,15 @@ jobs:
 
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # If you use SonarCloud, you can omit the next line (it defaults to https://sonarcloud.io)
+          # If you use self-hosted, set SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
-          # Pass token as input to avoid env issues
-          sonar.token: ${{ secrets.SONAR_TOKEN }}
-          # Provide host.url explicitly if you use SonarCloud (remove if self-hosted)
-          sonar.host.url: https://sonarcloud.io # remove this line for self-hosted
+          # All properties are passed as a single string – no quoting issues if we avoid spaces
           args: >
             -Dsonar.projectKey=seo2-platform
-            -Dsonar.projectName="SEO2 Platform"
+            -Dsonar.projectName=SEO2-Platform
             -Dsonar.sources=services/
             -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**
             -Dsonar.tests=services/
