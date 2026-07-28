@@ -27,7 +27,7 @@ import {
   AgingBucket,
   OldestOpenIssue,
 } from "@/types/issue.type";
-import { getAccessToken } from "@/lib/getAccessToken.client";
+
 import {
   getIssuesDashboardStats,
   getQADashboardStats,

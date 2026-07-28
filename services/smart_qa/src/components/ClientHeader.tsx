@@ -53,7 +53,7 @@ export function ClientHeader() {
         </div>
 
         <div className="logout-button">
-          <form action={clientLogout}>
+          <form action={logout}>
             <button
               type="submit"
               className="flex items-center border-2 border-[#C6C6C6] px-[7px] py-[5px] rounded-2xl hover:bg-gray-50 transition-colors"

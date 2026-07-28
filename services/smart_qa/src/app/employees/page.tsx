@@ -1,7 +1,7 @@
 "use client";
 
 import { getUsers } from "@/services/users.service";
-import { employee } from "@/types/employee.type";
+import { Employee } from "@/types/employee.type";
 import Image from "next/image";
 
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
@@ -27,7 +27,7 @@ function useDebounce(
 }
 
 export default function EmployeesList() {
-  const [employees, setEmployees] = useState<employee[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);

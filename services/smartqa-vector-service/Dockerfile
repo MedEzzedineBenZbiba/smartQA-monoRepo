@@ -1,16 +1,16 @@
-# Stage 1 - Build (optional - for installing dependencies)
+# Stage 1 - Build (install dependencies)
 FROM python:3.10-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies for some packages
+# Install system dependencies (only those strictly required)
 RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies, without caching
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2 - Production
@@ -25,7 +25,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY . .
 
-# Create non-root user
+# Create a non-root user (optional)
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 

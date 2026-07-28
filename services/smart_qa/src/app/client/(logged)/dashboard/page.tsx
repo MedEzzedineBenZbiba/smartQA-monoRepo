@@ -4,6 +4,9 @@ import { getIssues } from "@/services/issues.service";
 import { IssuesTable } from "@/components/IssuesTable";
 import { Pagination } from "@/components/Pagination";
 import { redirect } from "next/navigation";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { getAccessTokenClient } from "@/lib/getAccessToken.client";
+import { getAccessTokenServer } from "@/lib/getAccessToken.server";
 
 const LIMIT = 20;
 
@@ -18,18 +21,18 @@ export default async function Dashboard({ searchParams }: Props) {
   let data: Awaited<ReturnType<typeof getIssues>>;
 
   try {
-    data = await getIssues(page, LIMIT);
+    const token = await getAccessTokenServer();
+    data = await getIssues(token, page, LIMIT);
   } catch (err: any) {
     if (err.message === "UNAUTHORIZED") redirect("/login");
     throw err; // let Next.js error boundary handle anything else
   }
 
-  const openCount   = data.data.filter((i) => i.state === "open").length;
+  const openCount = data.data.filter((i) => i.state === "open").length;
   const closedCount = data.data.filter((i) => i.state === "closed").length;
 
   return (
     <main className="px-[80px] mt-[35px] pb-16">
-
       {/* Page header */}
       <div className="flex items-center gap-3 mb-6">
         <svg
@@ -59,7 +62,6 @@ export default async function Dashboard({ searchParams }: Props) {
 
       {/* Pagination */}
       <Pagination page={page} limit={LIMIT} total={data.total} />
-
     </main>
   );
 }

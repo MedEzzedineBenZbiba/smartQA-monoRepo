@@ -6,77 +6,143 @@ on:
   pull_request:
     branches: [main]
 
-# Required for pushing to GitHub Container Registry
 permissions:
   contents: read
   packages: write
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_BASE: ${{ github.repository }}
 
 jobs:
-  # --------------------------------------------------------------------------
-  # lint-test temporarily disabled to save compute time
-  # --------------------------------------------------------------------------
-  # lint-test:
-  #   name: Lint & Test
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       include:
-  #         - service: auth-gateway
-  #           lang: node
-  #         - service: ingestion
-  #           lang: node
-  #         - service: issues
-  #           lang: node
-  #         - service: users
-  #           lang: node
-  #         - service: smart_qa
-  #           lang: node
-  #         - service: smartqa-vector-service
-  #           lang: python
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #     # ... (rest of lint-test steps) ...
+  lint-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: auth-gateway
+            lang: node
+          - service: ingestion
+            lang: node
+          - service: issues
+            lang: node
+          - service: users
+            lang: node
+          - service: smart_qa
+            lang: node
+          - service: smartqa-vector-service
+            lang: python
 
-  # --------------------------------------------------------------------------
-  # SonarQube Cloud analysis temporarily disabled to save compute time
-  # --------------------------------------------------------------------------
-  # sonar:
-  #   name: SonarQube Analysis
-  #   runs-on: ubuntu-latest
-  #   if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
-  #     - name: SonarQube Scan
-  #       uses: SonarSource/sonarqube-scan-action@v7
-  #       env:
-  #         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  #         SONAR_HOST_URL: https://sonarcloud.io
-  #       with:
-  #         args: >
-  #           -Dsonar.projectKey=MedEzzedineBenZbiba_smartQA-monoRepo
-  #           -Dsonar.projectName=smartQA-monoRepo
-  #           -Dsonar.organization=medezzedinebenzbiba
-  #           -Dsonar.sources=services/
-  #           -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**,**/package-lock.json,**/build-wrapper-dump.json,**/Dockerfile
-  #           -Dsonar.javascript.lcov.reportPaths=services/**/coverage/lcov.info
-  #           -Dsonar.python.coverage.reportPaths=services/**/coverage.xml
-  #           -Dsonar.typescript.lcov.reportPaths=services/**/coverage/lcov.info
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo docker system prune -af
 
-  # --------------------------------------------------------------------------
-  # Step 4: Docker Build & Push (runs independently on main pushes)
-  # --------------------------------------------------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: matrix.lang == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: services/${{ matrix.service }}/package-lock.json
+
+      - name: Install Node dependencies
+        if: matrix.lang == 'node'
+        run: |
+          cd services/${{ matrix.service }}
+          npm ci
+
+      - name: Run Node linter
+        if: matrix.lang == 'node'
+        run: |
+          cd services/${{ matrix.service }}
+          npm run lint --if-present
+
+      - name: Run Node unit tests
+        if: matrix.lang == 'node'
+        run: |
+          cd services/${{ matrix.service }}
+          npm test --if-present
+
+      - name: Build Node service
+        if: matrix.lang == 'node'
+        run: |
+          cd services/${{ matrix.service }}
+          npm run build --if-present
+
+      - name: Setup Python
+        if: matrix.lang == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+          cache-dependency-path: services/${{ matrix.service }}/requirements.txt
+
+      - name: Install Python dependencies
+        if: matrix.lang == 'python'
+        run: |
+          cd services/${{ matrix.service }}
+          pip install -r requirements.txt
+
+      - name: Run Python linter
+        if: matrix.lang == 'python'
+        run: |
+          cd services/${{ matrix.service }}
+          pip install flake8
+          flake8 . --count --max-complexity=10 --statistics || echo "Linter issues found (non-blocking)"
+
+      - name: Run Python unit tests
+        if: matrix.lang == 'python'
+        run: |
+          cd services/${{ matrix.service }}
+          pip install pytest
+          pytest || echo "No tests found or tests failed (non-blocking)"
+
+  sonar:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+    needs: lint-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo docker system prune -af
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          args: >
+            -Dsonar.projectKey=MedEzzedineBenZbiba_smartQA-monoRepo
+            -Dsonar.projectName=smartQA-monoRepo
+            -Dsonar.organization=medezzedinebenzbiba
+            -Dsonar.sources=services/
+            -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**,**/package-lock.json,**/build-wrapper-dump.json,**/Dockerfile
+            -Dsonar.javascript.lcov.reportPaths=services/**/coverage/lcov.info
+            -Dsonar.python.coverage.reportPaths=services/**/coverage.xml
+            -Dsonar.typescript.lcov.reportPaths=services/**/coverage/lcov.info
+
   docker-build-push:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
+    needs: sonar
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
@@ -86,9 +152,17 @@ jobs:
           - ingestion
           - issues
           - users
+          - smart_qa
           - smartqa-vector-service
 
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo docker system prune -af
+
       - name: Checkout code
         uses: actions/checkout@v4
 
