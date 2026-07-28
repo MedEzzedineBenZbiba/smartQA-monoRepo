@@ -115,8 +115,8 @@ jobs:
         with:
           # All properties are passed as a single string – no quoting issues if we avoid spaces
           args: >
-            -Dsonar.projectKey=seo2-platform
-            -Dsonar.projectName=SEO2-Platform
+            -Dsonar.projectKey=MedEzzedineBenZbiba_smartQA-monoRepo
+            -Dsonar.projectName=smartQA-monoRepo
             -Dsonar.organization=MedEzzedineBenZbiba
             -Dsonar.sources=services/
             -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**
