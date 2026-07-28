@@ -1,23 +1,22 @@
 # Stage 1 - Build
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder   # <-- Changed from 18 to 22
 
 WORKDIR /usr/src/app
 
 COPY package*.json ./
 
-RUN npm install
+RUN npm ci
 
 COPY . .
 
-# Build the Next.js app
 RUN npm run build
 
 # Stage 2 - Production
-FROM node:18-alpine
+FROM node:22-alpine   # <-- Changed from 18 to 22
 
 WORKDIR /usr/src/app
 
-# Copy standalone build and static files
+# Option 1: If using standalone output
 COPY --from=builder /usr/src/app/.next/standalone ./
 COPY --from=builder /usr/src/app/.next/static ./.next/static
 COPY --from=builder /usr/src/app/public ./public
