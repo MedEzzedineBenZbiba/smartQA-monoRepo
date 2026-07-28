@@ -117,7 +117,7 @@ jobs:
           args: >
             -Dsonar.projectKey=MedEzzedineBenZbiba_smartQA-monoRepo
             -Dsonar.projectName=smartQA-monoRepo
-            -Dsonar.organization=MedEzzedineBenZbiba
+            -Dsonar.organization=medezzedinebenzbiba
             -Dsonar.sources=services/
             -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**
             -Dsonar.tests=services/
