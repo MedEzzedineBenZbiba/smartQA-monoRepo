@@ -117,6 +117,7 @@ jobs:
           args: >
             -Dsonar.projectKey=seo2-platform
             -Dsonar.projectName=SEO2-Platform
+            -Dsonar.organization=MedEzzedineBenZbiba
             -Dsonar.sources=services/
             -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**
             -Dsonar.tests=services/
