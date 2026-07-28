@@ -94,3 +94,30 @@ jobs:
           cd services/${{ matrix.service }}
           pip install pytest
           pytest || echo "No tests found or tests failed (non-blocking)"
+
+      # ---------- JOB 2: SonarQube Analysis (NEW) ----------
+  sonar:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+    needs: lint-test # Only runs if lint-test passes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required for Sonar to analyze branches correctly
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=seo2-platform
+            -Dsonar.projectName=SEO2 Platform
+            -Dsonar.sources=services/
+            -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**
+            -Dsonar.tests=services/
+            -Dsonar.javascript.lcov.reportPaths=services/**/coverage/lcov.info
+            -Dsonar.python.coverage.reportPaths=services/**/coverage.xml
+            -Dsonar.typescript.lcov.reportPaths=services/**/coverage/lcov.info
