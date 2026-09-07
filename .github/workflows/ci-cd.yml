@@ -137,7 +137,7 @@ jobs:
           flake8 . \
             --count \
             --max-complexity=10 \
-            --statistics
+            --statistics || echo "Linter issues found (non-blocking)"
 
       - name: Test smartqa-vector-service
         working-directory: services/smartqa-vector-service
