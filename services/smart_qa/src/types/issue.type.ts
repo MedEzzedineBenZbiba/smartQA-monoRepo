@@ -15,6 +15,9 @@ export interface Issue {
   labels?: IssueLabel[];
   priority?: IssuePriority;
   assignee?: string;
+  embedding?: number[] | null; // drives isPoorlyDescribed for table rows
+  cluster_id?: number | null; // drives isNoise for table rows
+  cluster_label?: string | null;
   created_at: string;
   updated_at: string;
 }

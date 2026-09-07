@@ -4,8 +4,6 @@ import { getIssues } from "@/services/issues.service";
 import { IssuesTable } from "@/components/IssuesTable";
 import { Pagination } from "@/components/Pagination";
 import { redirect } from "next/navigation";
-import { useAuthStore } from "@/stores/useAuthStore";
-import { getAccessTokenClient } from "@/lib/getAccessToken.client";
 import { getAccessTokenServer } from "@/lib/getAccessToken.server";
 
 const LIMIT = 20;
@@ -23,9 +21,11 @@ export default async function Dashboard({ searchParams }: Props) {
   try {
     const token = await getAccessTokenServer();
     data = await getIssues(token, page, LIMIT);
-  } catch (err: any) {
-    if (err.message === "UNAUTHORIZED") redirect("/login");
-    throw err; // let Next.js error boundary handle anything else
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "UNAUTHORIZED") {
+      redirect("/login");
+    }
+    throw err;
   }
 
   const openCount = data.data.filter((i) => i.state === "open").length;
@@ -33,7 +33,6 @@ export default async function Dashboard({ searchParams }: Props) {
 
   return (
     <main className="px-[80px] mt-[35px] pb-16">
-      {/* Page header */}
       <div className="flex items-center gap-3 mb-6">
         <svg
           className="w-5 h-5 text-gray-700"
@@ -45,7 +44,6 @@ export default async function Dashboard({ searchParams }: Props) {
         <h1 className="text-xl font-semibold text-gray-900">GitHub Issues</h1>
       </div>
 
-      {/* Stat cards */}
       <div className="grid grid-cols-2 gap-3 mb-8 max-w-xs">
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
           <p className="text-2xl font-semibold text-gray-900">{openCount}</p>
@@ -57,10 +55,7 @@ export default async function Dashboard({ searchParams }: Props) {
         </div>
       </div>
 
-      {/* Issues table */}
       <IssuesTable issues={data.data} />
-
-      {/* Pagination */}
       <Pagination page={page} limit={LIMIT} total={data.total} />
     </main>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { getAccessTokenClient } from "@/lib/getAccessToken.client";
 import {
@@ -9,7 +9,6 @@ import {
   type ClusterRepoItem,
   type ClusterIssue,
 } from "@/services/issues.service";
-import { useAuthStore } from "@/stores/useAuthStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +36,10 @@ function resolutionRate(open: number, closed: number) {
   const total = open + closed;
   if (total === 0) return "0%";
   return Math.round((closed / total) * 100) + "%";
+}
+
+function errorMessage(err: unknown, fallback: string) {
+  return err instanceof Error ? err.message : fallback;
 }
 
 const REPO_PAGE_SIZE = 8;
@@ -259,32 +262,6 @@ function ClusterRow({
   const [loadingIssues, setLoadingIssues] = useState(false);
   const [issuesError, setIssuesError] = useState<string | null>(null);
 
-  const fetchRepos = useCallback(
-    async (page: number) => {
-      setLoadingRepos(true);
-      try {
-        const token = getAccessTokenClient();
-        const result = await getClusterRepos(
-          token,
-          cluster.cluster_id,
-          page,
-          REPO_PAGE_SIZE,
-        );
-        setRepos(result.data);
-        setRepoTotal(result.total);
-        setRepoPage(page);
-        const firstRepo = result.data[0]?.repo ?? null;
-        setSelectedRepo(firstRepo);
-      } catch {
-        setRepos([]);
-      } finally {
-        setLoadingRepos(false);
-        setHasLoadedRepos(true);
-      }
-    },
-    [cluster.cluster_id],
-  );
-
   const fetchIssues = useCallback(
     async (repo: string, page: number) => {
       setLoadingIssues(true);
@@ -310,23 +287,60 @@ function ClusterRow({
     [cluster.cluster_id],
   );
 
-  // Lazy-load repos on first expand
-  useEffect(() => {
-    if (isExpanded && !hasLoadedRepos) {
+  const fetchRepos = useCallback(
+    async (page: number) => {
+      setLoadingRepos(true);
+      try {
+        const token = getAccessTokenClient();
+        const result = await getClusterRepos(
+          token,
+          cluster.cluster_id,
+          page,
+          REPO_PAGE_SIZE,
+        );
+        setRepos(result.data);
+        setRepoTotal(result.total);
+        setRepoPage(page);
+        const firstRepo = result.data[0]?.repo ?? null;
+        setSelectedRepo(firstRepo);
+
+        // Fetch issues for the first repo as a direct consequence of loading
+        // repos, instead of via a reactive effect watching selectedRepo.
+        if (firstRepo) {
+          await fetchIssues(firstRepo, 1);
+        } else {
+          setIssues([]);
+          setIssueTotal(0);
+        }
+      } catch {
+        setRepos([]);
+      } finally {
+        setLoadingRepos(false);
+        setHasLoadedRepos(true);
+      }
+    },
+    [cluster.cluster_id, fetchIssues],
+  );
+
+  // Called directly from RepoTabs' onClick — repo selection is a user action,
+  // so we fetch right here instead of reacting to a selectedRepo change.
+  const handleSelectRepo = useCallback(
+    (repo: string) => {
+      setSelectedRepo(repo);
+      fetchIssues(repo, 1);
+    },
+    [fetchIssues],
+  );
+
+  // Called when the header row is clicked to expand/collapse. Lazy-loads
+  // repos on first expand — triggered directly by the user action instead
+  // of a useEffect watching isExpanded.
+  const handleToggleRow = useCallback(() => {
+    if (!isExpanded && !hasLoadedRepos) {
       fetchRepos(1);
     }
-  }, [isExpanded, hasLoadedRepos, fetchRepos]);
-
-  // Fetch issues whenever the selected repo changes
-  useEffect(() => {
-    if (selectedRepo) {
-      fetchIssues(selectedRepo, 1);
-    } else {
-      setIssues([]);
-      setIssueTotal(0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRepo]);
+    onToggle();
+  }, [isExpanded, hasLoadedRepos, fetchRepos, onToggle]);
 
   function handleRepoPrev() {
     if (repoPage > 1) fetchRepos(repoPage - 1);
@@ -351,7 +365,7 @@ function ClusterRow({
     >
       {/* ── Header row ── */}
       <button
-        onClick={onToggle}
+        onClick={handleToggleRow}
         className="w-full flex items-center gap-4 px-5 py-4 bg-white hover:bg-gray-50/70 transition-colors text-left"
       >
         <ChevronIcon
@@ -390,7 +404,7 @@ function ClusterRow({
             <RepoTabs
               repos={repos}
               selectedRepo={selectedRepo}
-              onSelect={setSelectedRepo}
+              onSelect={handleSelectRepo}
               repoPage={repoPage}
               repoTotal={repoTotal}
               onPrevPage={handleRepoPrev}
@@ -568,9 +582,6 @@ export function AiInsightClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const session = useAuthStore((s) => s.session);
-  const hasHydrated = useAuthStore((s) => s.hasHydrated);
-  const isQA = session?.role.includes("QA");
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [search, setSearch] = useState(initialSearch);
@@ -650,12 +661,12 @@ export function AiInsightClient({
         ...prev,
         [clusterId]: { loading: false, error: null, text: data.summary },
       }));
-    } catch (err: any) {
+    } catch (err: unknown) {
       setSummaries((prev) => ({
         ...prev,
         [clusterId]: {
           loading: false,
-          error: err.message ?? "Something went wrong",
+          error: errorMessage(err, "Something went wrong"),
           text: null,
         },
       }));
@@ -754,7 +765,7 @@ export function AiInsightClient({
       {initialClusters.length === 0 ? (
         search ? (
           <p className="text-[13px] text-gray-400 py-12 text-center">
-            No clusters match "{search}"
+            No clusters match &quot;{search}&quot;
           </p>
         ) : (
           <EmptyState />

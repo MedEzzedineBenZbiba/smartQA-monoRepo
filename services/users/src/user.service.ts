@@ -1,18 +1,22 @@
 import {
-  HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, In, Not, Repository } from 'typeorm';
+import { ILike, In, Not, Repository, UpdateResult } from 'typeorm';
 import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { normalizeError } from './common/utils/normalizedError.util';
 import { UserRole } from './entities/userRole.enum';
+
+interface GenderCountRow {
+  gender: string | null;
+  count: string;
+}
 
 @Injectable()
 export class UserService {
@@ -32,9 +36,7 @@ export class UserService {
     try {
       const [total, roleRaw, genderStats] = await Promise.all([
         this.userRepository.count({
-          where: {
-            role: Not(UserRole.Superadmin),
-          },
+          where: { role: Not(UserRole.Superadmin) },
         }),
 
         this.userRepository
@@ -43,21 +45,22 @@ export class UserService {
           .addSelect('COUNT(*)', 'count')
           .where('user.role != :role', { role: UserRole.Superadmin })
           .groupBy('user.role')
-          .getRawMany(),
+          .getRawMany<{ role: string; count: string }>(),
 
         this.getGenderStats(),
       ]);
 
       const byRole: Record<string, number> = {};
-
       for (const row of roleRaw) {
-        byRole[row.role] = parseInt(row.count);
+        byRole[row.role] = parseInt(row.count, 10);
       }
 
       return { total, byRole, byGender: genderStats };
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -69,34 +72,38 @@ export class UserService {
         .addSelect('COUNT(*)', 'count')
         .where('user.role != :role', { role: 'superadmin' })
         .groupBy('user.gender')
-        .getRawMany();
+        .getRawMany<GenderCountRow>();
 
       const stats = { male: 0, female: 0 };
 
       for (const row of result) {
         if (row.gender === 'male') {
-          stats.male = parseInt(row.count);
+          stats.male = parseInt(row.count, 10);
         }
 
         if (row.gender === 'female') {
-          stats.female = parseInt(row.count);
+          stats.female = parseInt(row.count, 10);
         }
       }
 
       return stats;
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
-  async create(user: CreateUserDto) {
+  async create(user: CreateUserDto): Promise<User> {
     try {
       const newUser = this.userRepository.create(user);
       return await this.userRepository.save(newUser);
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -111,21 +118,24 @@ export class UserService {
         .andWhere('user.role != :role', { role: 'superadmin' })
         .orderBy('user.createdAt', 'DESC')
         .getMany();
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
-  async getUserByEmail(email: string) {
-    let user;
+  async getUserByEmail(email: string): Promise<User> {
+    let user: User | null;
     try {
       user = await this.userRepository.findOne({
         where: { email },
       });
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      throw new InternalServerErrorException(normalized.message);
     }
     if (user) {
       this.logger.log(`User found: ${user.id}`);
@@ -135,28 +145,31 @@ export class UserService {
   }
 
   async getUserById(id: string): Promise<User> {
-    let user;
+    let user: User | null;
     try {
       user = await this.userRepository.findOne({
         where: { id },
       });
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      throw new InternalServerErrorException(normalized.message);
     }
     if (user) return user;
     throw new NotFoundException('user does not exist');
   }
 
-  async getUserByUsername(username: string) {
-    let user;
+  async getUserByUsername(username: string): Promise<User> {
+    let user: User | null;
     try {
       user = await this.userRepository.findOne({
         where: { username },
       });
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
     if (user) return user;
     throw new NotFoundException('user does not exist');
@@ -195,22 +208,28 @@ export class UserService {
         total,
         totalPages: Math.ceil(total / limit),
       };
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
-  async updateLastIngestionDate(lastIngestionDate: Date, userId: string) {
-    let result;
+  async updateLastIngestionDate(
+    lastIngestionDate: Date,
+    userId: string,
+  ): Promise<void> {
+    let result: UpdateResult;
     try {
       result = await this.userRepository.update(
         { id: userId },
         { lastIngestionDate },
       );
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      throw new InternalServerErrorException(normalized.message);
     }
     if (result.affected === 0) {
       throw new NotFoundException('user doesn t exist');
@@ -229,22 +248,25 @@ export class UserService {
       }
 
       return user.lastIngestionDate;
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
-  async updateResetPasswordToken(email, resetPasswordToken: string) {
-    let result;
+  async updateResetPasswordToken(
+    email: string,
+    resetPasswordToken: string,
+  ): Promise<void> {
+    let result: UpdateResult;
     try {
       if (resetPasswordToken) {
         await this.jwtService.verifyAsync(resetPasswordToken, {
-          secret: this.configService.getOrThrow('JWT_RESET_PASSWORD_SECRET'),
+          secret: this.configService.getOrThrow<string>(
+            'JWT_RESET_PASSWORD_SECRET',
+          ),
         });
         result = await this.userRepository.update(
           { email },
@@ -256,9 +278,11 @@ export class UserService {
           { resetPasswordToken: '' },
         );
       }
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
     if (result.affected === 0) {
       throw new NotFoundException('user doesn t exist');

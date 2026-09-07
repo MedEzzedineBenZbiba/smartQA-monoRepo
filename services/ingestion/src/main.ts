@@ -14,4 +14,12 @@ async function bootstrap() {
 
   Logger.log(`Ingestion service running on port ${port}`, 'Bootstrap');
 }
-bootstrap();
+
+bootstrap().catch((error: unknown) => {
+  Logger.error(
+    'Failed to bootstrap ingestion service',
+    error as Error,
+    'Bootstrap',
+  );
+  process.exit(1);
+});

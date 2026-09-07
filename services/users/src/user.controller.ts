@@ -4,8 +4,6 @@ import {
   Get,
   Param,
   Post,
-  Headers,
-  Put,
   Patch,
   Query,
   Delete,
@@ -91,7 +89,7 @@ doesn’t treat passwords as we expected. */
   }
 
   @Patch('last-ingestion-date')
-  updateLastIngestionDate(@Body() body) {
+  updateLastIngestionDate(@Body() body: UpdateLastIngestionDateBody) {
     return this.userService.updateLastIngestionDate(
       body.lastIngestionDate,
       body.userId,
@@ -164,4 +162,9 @@ doesn’t treat passwords as we expected. */
   deleteSyncJob(@Param('id') id: string) {
     return this.syncJobService.deleteSyncJob(id);
   }
+}
+
+interface UpdateLastIngestionDateBody {
+  lastIngestionDate: Date;
+  userId: string;
 }

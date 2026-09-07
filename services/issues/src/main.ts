@@ -7,9 +7,6 @@ import { ConfigService } from '@nestjs/config';
 import { normalizeError } from './common/util/normalizedError.util';
 
 async function bootstrap() {
-  // const app = await NestFactory.create(IssuesModule);
-  // await app.listen(process.env.port ?? 3000);
-
   const logger = new Logger('KafkaBootstrap');
 
   const app = await NestFactory.create(IssuesModule);
@@ -17,7 +14,7 @@ async function bootstrap() {
     origin: 'http://localhost:3000',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true, // only if using cookies
+    credentials: true,
   });
   const configService = app.get(ConfigService);
   app.connectMicroservice<MicroserviceOptions>({
@@ -47,8 +44,6 @@ async function bootstrap() {
   });
 
   try {
-    // for dev mode : pressing Ctrl + C triggers onModuleDestroy() and your service is deregistered.
-    // to test onModuleDestroy method that we use to deregister service instances
     app.enableShutdownHooks();
     const port = configService.getOrThrow<number>('SERVICE_PORT');
     await app.startAllMicroservices();
@@ -61,4 +56,5 @@ async function bootstrap() {
     process.exit(1);
   }
 }
-bootstrap();
+
+void bootstrap(); // <-- fixed floating promise

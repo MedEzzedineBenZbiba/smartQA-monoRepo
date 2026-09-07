@@ -17,4 +17,7 @@ async function bootstrap() {
   await app.listen(port);
   Logger.log(`users running on port ${port}`, 'Bootstrap');
 }
-bootstrap();
+bootstrap().catch((err: unknown) => {
+  Logger.error(err, 'Bootstrap');
+  process.exit(1);
+});

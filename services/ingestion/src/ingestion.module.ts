@@ -7,7 +7,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { KafkaProducerClient } from './clients/kafka-producer.client';
 import { ConsulClient } from './clients/consul.client';
 import { Partitioners } from 'kafkajs';
-import { JwtModule, JwtService } from '@nestjs/jwt';
+import { JwtModule } from '@nestjs/jwt';
 import { UserServiceClient } from './clients/user-service.client';
 import { SyncJobScheduler } from './sync-job.scheduler';
 

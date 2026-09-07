@@ -8,6 +8,10 @@ interface DisplayMessage extends ChatMessage {
   citations?: ChatCitation[];
 }
 
+function errorMessage(err: unknown, fallback: string) {
+  return err instanceof Error ? err.message : fallback;
+}
+
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -39,8 +43,8 @@ export function ChatWidget() {
         ...prev,
         { role: "assistant", content: res.answer, citations: res.citations },
       ]);
-    } catch (err: any) {
-      setError(err.message ?? "Something went wrong");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Something went wrong"));
     } finally {
       setLoading(false);
     }
@@ -82,7 +86,8 @@ export function ChatWidget() {
           >
             {messages.length === 0 && (
               <p className="text-[12px] text-gray-400 text-center mt-6">
-                Try: "What are the most common causes of login failures?"
+                Try: &quot;What are the most common causes of login
+                failures?&quot;
               </p>
             )}
             {messages.map((m, i) => (

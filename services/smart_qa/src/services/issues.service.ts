@@ -152,33 +152,6 @@ export async function getIssuesDashboardStats(): Promise<IssueDashboardStats> {
   return res.json();
 }
 // services/issues.service.ts — add this function
-export async function searchIssuesSemantic(
-  token: string,
-  query: string,
-  page = 1,
-  state: "open" | "closed" | "all" = "all",
-  limit = 20,
-): Promise<SemanticSearchResult> {
-  const params = new URLSearchParams({
-    query,
-    page: String(page),
-    state,
-    limit: String(limit),
-  });
-  const res = await fetch(`${API_BASE}/issues/search?${params}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error("Search failed");
-  return res.json();
-}
-
-export interface SemanticSearchResult {
-  data: any;
-  total: number;
-  query: string;
-  mode: "hybrid" | "text-only"; // tells frontend what happened
-}
 
 // services/issues.service.ts — add this function
 import type { QADashboardStats } from "@/types/issue.type";
@@ -260,5 +233,52 @@ export async function chatWithIssues(
   });
   if (res.status === 401) throw new Error("UNAUTHORIZED");
   if (!res.ok) throw new Error(`Chat request failed: ${res.statusText}`);
+  return res.json();
+}
+
+// services/issues.service.ts
+
+export interface SearchedIssue {
+  _id: string;
+  issueId: string;
+  title: string;
+  body: string | undefined | null;
+  state: string;
+  cluster_id: number | null;
+  cluster_label: string | null;
+  created_at: Date | string | null;
+  updated_at: Date | string | null;
+  url: string;
+  similarity_score: number | null; // null for text-only fallback results
+  isPoorlyDescribed: boolean;
+  isNoise: boolean;
+  match_type: "vector" | "text"; // how this specific result was found
+}
+
+export interface SemanticSearchResult {
+  data: SearchedIssue[];
+  total: number;
+  query: string;
+  mode: "hybrid" | "text-only"; // tells frontend what happened
+}
+
+export async function searchIssuesSemantic(
+  token: string,
+  query: string,
+  page = 1,
+  state: "open" | "closed" | "all" = "all",
+  limit = 20,
+): Promise<SemanticSearchResult> {
+  const params = new URLSearchParams({
+    query,
+    page: String(page),
+    state,
+    limit: String(limit),
+  });
+  const res = await fetch(`${API_BASE}/issues/search?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Search failed");
   return res.json();
 }

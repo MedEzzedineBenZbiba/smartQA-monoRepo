@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common';
 
 import { LoginUserDto } from './dto/login-user.dto';
-import { CreateUserDto } from './dto/create-user.dto';
 
 import type { Response, Request } from 'express';
 import { AuthService } from './auth.service';
@@ -22,6 +21,10 @@ import {
 import { UpdatePasswordDto } from './dto/update-password.dto';
 import { ChangeForgettenPassowrdDTO } from './dto/change-forgotten-password.dto';
 
+interface ForgotPasswordBody {
+  email: string;
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -30,11 +33,6 @@ export class AuthController {
   healthCheck() {
     return { status: 'ok' };
   }
-
-  // @Post('signup')
-  // signup(@Body() createUserDto: CreateUserDto) {
-  //   return this.authService.signup(createUserDto);
-  // }
 
   @Post('login')
   login(@Body() loginUserDto: LoginUserDto) {
@@ -47,17 +45,17 @@ export class AuthController {
   }
 
   @Post('forgot-password')
-  async forgetPassword(@Body() body) {
+  async forgetPassword(@Body() body: ForgotPasswordBody) {
     await this.authService.forgetPassowrd(body.email);
     return { message: 'A password reset email was sent' };
   }
 
   @Get('reset-password')
   async verifyResetPasswordToken(
-    @Query('resetToken') resetToken,
+    @Query('resetToken') resetToken: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const tmpJWTToUpdatePassword =
+    const tmpJWTToUpdatePassword: string =
       await this.authService.verifyResetPasswordToken(resetToken);
 
     res.cookie(
@@ -91,7 +89,7 @@ export class AuthController {
     @Body() changeForgettenPassowrdDTO: ChangeForgettenPassowrdDTO,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const resetToken = req.cookies[RESET_TOKEN_COOKIE];
+    const resetToken = req.cookies[RESET_TOKEN_COOKIE] as string;
     await this.authService.changePassword(
       changeForgettenPassowrdDTO.newPassword,
       null,

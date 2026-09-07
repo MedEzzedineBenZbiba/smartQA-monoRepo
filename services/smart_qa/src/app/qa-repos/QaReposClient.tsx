@@ -189,8 +189,8 @@ export function QaReposClient({
         const newJob = await res.json();
         setSyncJobs((prev) => [newJob, ...prev]);
         setModalRepo(null);
-      } catch (err: any) {
-        setError(err.message ?? "Something went wrong");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Something went wrong");
       }
     },
     [],
@@ -207,8 +207,8 @@ export function QaReposClient({
       setSyncJobs((prev) =>
         prev.map((j) => (j.id === id ? { ...j, status: "paused" } : j)),
       );
-    } catch (err: any) {
-      setError(err.message ?? "Something went wrong");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoadingJobId(null);
     }
@@ -225,8 +225,8 @@ export function QaReposClient({
       setSyncJobs((prev) =>
         prev.map((j) => (j.id === id ? { ...j, status: "active" } : j)),
       );
-    } catch (err: any) {
-      setError(err.message ?? "Something went wrong");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoadingJobId(null);
     }
@@ -241,8 +241,8 @@ export function QaReposClient({
       });
       if (!res.ok) throw new Error("Failed to delete");
       setSyncJobs((prev) => prev.filter((j) => j.id !== id));
-    } catch (err: any) {
-      setError(err.message ?? "Something went wrong");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoadingJobId(null);
     }

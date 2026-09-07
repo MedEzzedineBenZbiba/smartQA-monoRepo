@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable prettier/prettier */
+
 import { HttpService } from '@nestjs/axios';
 import {
   Injectable,
@@ -47,15 +46,13 @@ export class ConsulClient implements OnModuleInit, OnModuleDestroy {
     const registerUrl = this.getRegisterUrl();
     const instanceData = this.buildServiceRegistrationPayload();
     try {
-      const { data } = await firstValueFrom(
-        this.httpService.put(registerUrl, instanceData),
-      );
+      await firstValueFrom(this.httpService.put(registerUrl, instanceData));
       this.logger.log(this.serviceName + ' is registered with Consul');
     } catch (error) {
       this.logger.error(
         `${this.serviceName} - ${JSON.stringify(normalizeAxiosError(error))}`,
       );
-      exit(1)
+      exit(1);
     }
   }
 

@@ -4,9 +4,13 @@
 import { cookies } from "next/headers";
 import axios from "axios";
 import { decrypt } from "@/lib/encryptSession";
-import { UnauthorizedError } from "@/errors/UnauthorizedError";
-import { redirect } from "next/navigation";
+
 import { NextRequest, NextResponse } from "next/server";
+import { SessionData } from "@/types/sessionData.type";
+
+interface DecryptedSession {
+  access_token: string;
+}
 
 const API_BASE = "http://localhost:8002";
 
@@ -34,12 +38,12 @@ export async function syncIssues(): Promise<{ synced: number }> {
   } catch (error) {
     if (axios.isAxiosError(error)) {
       const status = error.response?.status;
-      if (status === 401) {
-        const githubAuthUrl = (await getGithubAuthUrl()).url;
-        redirect(githubAuthUrl);
+
+      // Treat both 401 and 404 as "GitHub not connected"
+      if (status === 401 || status === 404) {
+        throw new Error("GITHUB_NOT_CONNECTED");
       }
 
-      if (status === 404) throw new Error("GITHUB_NOT_CONNECTED");
       throw new Error(
         `Sync failed: ${error.response?.statusText ?? error.message}`,
       );
@@ -61,7 +65,19 @@ export async function getGithubStatus(): Promise<{ connected: boolean }> {
   return data;
 }
 
-export async function getSyncJobs(): Promise<any[]> {
+interface SyncJob {
+  id: string;
+  repoName: string;
+  orgName: string;
+  repoUrl: string;
+  frequency: "1h" | "6h" | "12h" | "24h";
+  status: "active" | "paused" | "syncing" | "failed";
+  lastSyncedAt: string | null;
+  nextSyncAt: string;
+  issueCount: number;
+}
+
+export async function getSyncJobs(): Promise<SyncJob[]> {
   const session = (await cookies()).get("session")?.value ?? null;
   let token = null;
   if (session) {
@@ -141,7 +157,7 @@ export async function POST(
     const cookieStore = await cookies();
     const session = cookieStore.get("session")?.value;
     const token = session
-      ? ((await decrypt(session)) as any)?.access_token
+      ? ((await decrypt(session)) as DecryptedSession)?.access_token
       : null;
 
     // Determine which action to perform based on the request URL
@@ -191,7 +207,7 @@ export async function DELETE(
     const cookieStore = await cookies();
     const session = cookieStore.get("session")?.value;
     const token = session
-      ? ((await decrypt(session)) as any)?.access_token
+      ? ((await decrypt(session)) as DecryptedSession)?.access_token
       : null;
 
     const res = await fetch(`${API_BASE}/ingestion/sync-jobs/${id}`, {

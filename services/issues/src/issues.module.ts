@@ -6,7 +6,6 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Issue, IssueSchema } from './issue.schema';
 import { ConsulClient } from './clients/consul.client';
 import { HttpModule } from '@nestjs/axios';
-import { config } from 'process';
 import { JwtModule } from '@nestjs/jwt';
 import { VectorIndexInitializer } from './vector-index.initializer';
 

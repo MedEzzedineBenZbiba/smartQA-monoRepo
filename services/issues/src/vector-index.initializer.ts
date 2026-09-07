@@ -1,9 +1,26 @@
-// issues.module.ts or a new file: vector-index.initializer.ts
-
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Issue } from './issue.schema';
+
+// Local type definitions for search index operations
+interface SearchIndexDescription {
+  name: string;
+  type: string;
+  definition: {
+    fields: Array<{
+      type: string;
+      path: string;
+      numDimensions: number;
+      similarity: string;
+    }>;
+  };
+}
+
+interface SearchIndex {
+  name: string;
+  status?: string; // 'READY', 'FAILED', etc.
+}
 
 @Injectable()
 export class VectorIndexInitializer implements OnModuleInit {
@@ -25,11 +42,9 @@ export class VectorIndexInitializer implements OnModuleInit {
       // Check if index already exists
       const existing = (await collection
         .listSearchIndexes()
-        .toArray()) as any[];
+        .toArray()) as SearchIndex[];
 
-      const alreadyExists = existing.some(
-        (idx: any) => idx.name === 'vector_index',
-      );
+      const alreadyExists = existing.some((idx) => idx.name === 'vector_index');
 
       if (alreadyExists) {
         this.logger.log(
@@ -40,7 +55,7 @@ export class VectorIndexInitializer implements OnModuleInit {
 
       this.logger.log('Creating vector index "vector_index"...');
 
-      await collection.createSearchIndex({
+      const definition: SearchIndexDescription = {
         name: 'vector_index',
         type: 'vectorSearch',
         definition: {
@@ -53,16 +68,18 @@ export class VectorIndexInitializer implements OnModuleInit {
             },
           ],
         },
-      } as any);
+      };
+
+      await collection.createSearchIndex(definition);
 
       this.logger.log(
         'Vector index creation triggered — waiting for READY status...',
       );
 
-      // Poll until READY (max 2 minutes)
       await this.waitForIndexReady('vector_index', 120000);
-    } catch (error: any) {
-      this.logger.error(`Failed to create vector index: ${error.message}`);
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to create vector index: ${err.message}`);
     }
   }
 
@@ -78,9 +95,9 @@ export class VectorIndexInitializer implements OnModuleInit {
 
       const indexes = (await this.issueModel.collection
         .listSearchIndexes()
-        .toArray()) as any[];
+        .toArray()) as SearchIndex[];
 
-      const idx = indexes.find((i: any) => i.name === indexName);
+      const idx = indexes.find((i) => i.name === indexName);
 
       if (!idx) {
         this.logger.warn(

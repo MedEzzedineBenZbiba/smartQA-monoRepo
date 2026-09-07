@@ -9,12 +9,12 @@ import {
   Post,
   Query,
   Redirect,
-  Request,
 } from '@nestjs/common';
 import { IngestionService } from './ingestion.service';
 import { UserServiceClient } from './clients/user-service.client';
 import { JwtService } from '@nestjs/jwt';
 import { SyncFrequency } from './interfaces/sync-job.interface';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
 
 @Controller('ingestion')
 export class IngestionController {
@@ -141,7 +141,10 @@ export class IngestionController {
       throw new Error('Missing authorization header');
     }
     const token = authorizationHeader.split(' ')[1];
-    const { sub } = this.jwtService.decode(token) as { sub: string };
-    return sub;
+    const decoded = this.jwtService.decode<JwtPayload>(token);
+    if (!decoded?.sub) {
+      throw new Error('Invalid token: missing sub claim');
+    }
+    return decoded.sub;
   }
 }

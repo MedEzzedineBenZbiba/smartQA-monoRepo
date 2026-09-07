@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { decrypt } from "@/lib/encryptSession";
+import { getTokenFromSession } from "@/lib/getTokenFromSession";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8002";
 
@@ -10,10 +9,7 @@ export async function POST(
 ) {
   const { id } = await params; // 👈 await
 
-  const session = (await cookies()).get("session")?.value ?? null;
-  const token = session
-    ? ((await decrypt(session)) as any)?.access_token
-    : null;
+  const token = await getTokenFromSession();
 
   const res = await fetch(`${API_BASE}/ingestion/sync-jobs/${id}/resume`, {
     method: "POST",

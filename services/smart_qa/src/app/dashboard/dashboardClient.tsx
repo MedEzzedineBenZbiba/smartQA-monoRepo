@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import {
   PieChart,
   Pie,
@@ -57,6 +57,38 @@ const BUCKET_COLORS: Record<AgingBucket["bucket"], string> = {
   "7-30": "#d97706",
   "30+": "#dc2626",
 };
+
+// ─── generic async-section state ───────────────────────────────────────────
+
+type SectionState<T> = {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+};
+type SectionAction<T> =
+  | { type: "start" }
+  | { type: "success"; data: T }
+  | { type: "error"; message: string };
+
+function sectionReducer<T>(
+  state: SectionState<T>,
+  action: SectionAction<T>,
+): SectionState<T> {
+  switch (action.type) {
+    case "start":
+      return { ...state, loading: true, error: null };
+    case "success":
+      return { data: action.data, loading: false, error: null };
+    case "error":
+      return { ...state, loading: false, error: action.message };
+  }
+}
+
+const initialSection = { data: null, loading: false, error: null };
+
+function errorMessage(err: unknown, fallback: string) {
+  return err instanceof Error ? err.message : fallback;
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -708,8 +740,8 @@ function QADashboard({ stats }: { stats: QADashboardStats }) {
               />
               <Tooltip
                 cursor={{ fill: "#f9fafb" }}
-                formatter={(value: any, _name, item: any) => [
-                  `${value} days`,
+                formatter={(value, _name, item) => [
+                  `${value ?? 0} days`,
                   item?.payload?.title ?? "Days open",
                 ]}
               />
@@ -731,23 +763,19 @@ function QADashboard({ stats }: { stats: QADashboardStats }) {
 
 export default function Dashboard() {
   const session = useAuthStore((s) => s.session);
-  const hasHydrated = useAuthStore((s) => s.hasHydrated);
 
-  // ── admin state ────────────────────────────────────────────────────────────
-  const [adminStats, setAdminStats] = useState<DashboardStats | null>(null);
-  const [recent, setRecent] = useState<Employee[]>([]);
-  const [adminLoading, setAdminLoading] = useState(false);
-  const [adminError, setAdminError] = useState<string | null>(null);
-
-  // ── SE state ───────────────────────────────────────────────────────────────
-  const [seStats, setSeStats] = useState<IssueDashboardStats | null>(null);
-  const [seLoading, setSeLoading] = useState(false);
-  const [seError, setSeError] = useState<string | null>(null);
-
-  // ── QA state ───────────────────────────────────────────────────────────────
-  const [qaStats, setQaStats] = useState<QADashboardStats | null>(null);
-  const [qaLoading, setQaLoading] = useState(false);
-  const [qaError, setQaError] = useState<string | null>(null);
+  const [adminSection, dispatchAdmin] = useReducer(
+    sectionReducer<{ stats: DashboardStats; recent: Employee[] }>,
+    initialSection,
+  );
+  const [seSection, dispatchSe] = useReducer(
+    sectionReducer<IssueDashboardStats>,
+    initialSection,
+  );
+  const [qaSection, dispatchQa] = useReducer(
+    sectionReducer<QADashboardStats>,
+    initialSection,
+  );
 
   const isAdmin = session?.role.includes("superadmin");
   const isSE = session?.role.includes("Software engineer");
@@ -756,69 +784,71 @@ export default function Dashboard() {
   // ── fetch: admin ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isAdmin) return;
-    setAdminLoading(true);
-    setAdminError(null);
+    dispatchAdmin({ type: "start" });
 
     Promise.all([getDashboardStats(), getRecentHires()])
-      .then(([statsRes, usersRes]) => {
-        if (!statsRes || !usersRes)
+      .then(([stats, recent]) => {
+        if (!stats || !recent)
           throw new Error("Failed to populate dashboard entries");
-        setAdminStats(statsRes);
-        setRecent(usersRes);
+        dispatchAdmin({ type: "success", data: { stats, recent } });
       })
-      .catch((err: any) => setAdminError(err.message ?? "Something went wrong"))
-      .finally(() => setAdminLoading(false));
+      .catch((err: unknown) =>
+        dispatchAdmin({
+          type: "error",
+          message: errorMessage(err, "Something went wrong"),
+        }),
+      );
   }, [isAdmin]);
 
   // ── fetch: SE ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isSE) return;
-
-    setSeLoading(true);
-    setSeError(null);
+    dispatchSe({ type: "start" });
 
     getIssuesDashboardStats()
       .then((data) => {
         if (!data) throw new Error("Failed to fetch dashboard stats");
-        setSeStats(data);
+        dispatchSe({ type: "success", data });
       })
-      .catch((err: any) => {
-        setSeError(err?.message ?? "Something went wrong");
-      })
-      .finally(() => {
-        setSeLoading(false);
-      });
-  }, [hasHydrated, isSE]);
+      .catch((err: unknown) =>
+        dispatchSe({
+          type: "error",
+          message: errorMessage(err, "Something went wrong"),
+        }),
+      );
+  }, [isSE]);
 
   // ── fetch: QA ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isQA) return;
-
-    setQaLoading(true);
-    setQaError(null);
+    dispatchQa({ type: "start" });
 
     getQADashboardStats()
       .then((data) => {
         if (!data) throw new Error("Failed to fetch QA dashboard stats");
-        setQaStats(data);
+        dispatchQa({ type: "success", data });
       })
-      .catch((err: any) => {
-        setQaError(err?.message ?? "Something went wrong");
-      })
-      .finally(() => {
-        setQaLoading(false);
-      });
-  }, [hasHydrated, isQA]);
+      .catch((err: unknown) =>
+        dispatchQa({
+          type: "error",
+          message: errorMessage(err, "Something went wrong"),
+        }),
+      );
+  }, [isQA]);
 
   // ── admin view ─────────────────────────────────────────────────────────────
   if (isAdmin) {
-    if (adminError)
+    if (adminSection.error)
       return (
         <ErrorBanner
-          message={adminError}
+          message={adminSection.error}
           onRetry={() => window.location.reload()}
         />
       );
+
+    const adminStats = adminSection.data?.stats ?? null;
+    const recent = adminSection.data?.recent ?? [];
+    const adminLoading = adminSection.loading;
 
     const roleData = adminStats
       ? Object.entries(adminStats.byRole).map(([key, value]) => ({
@@ -1089,28 +1119,28 @@ export default function Dashboard() {
 
   // ── SE view ────────────────────────────────────────────────────────────────
   if (isSE) {
-    if (seError)
+    if (seSection.error)
       return (
         <ErrorBanner
-          message={seError}
+          message={seSection.error}
           onRetry={() => window.location.reload()}
         />
       );
-    if (seLoading || !seStats) return <SESkeleton />;
-    return <SEDashboard stats={seStats} />;
+    if (seSection.loading || !seSection.data) return <SESkeleton />;
+    return <SEDashboard stats={seSection.data} />;
   }
 
   // ── QA view ────────────────────────────────────────────────────────────────
   if (isQA) {
-    if (qaError)
+    if (qaSection.error)
       return (
         <ErrorBanner
-          message={qaError}
+          message={qaSection.error}
           onRetry={() => window.location.reload()}
         />
       );
-    if (qaLoading || !qaStats) return <SESkeleton />;
-    return <QADashboard stats={qaStats} />;
+    if (qaSection.loading || !qaSection.data) return <SESkeleton />;
+    return <QADashboard stats={qaSection.data} />;
   }
 
   // ── no matching role ───────────────────────────────────────────────────────

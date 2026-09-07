@@ -7,23 +7,32 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { join } from 'path';
 import { firstValueFrom } from 'rxjs';
 import { normalizeAxiosError } from 'src/common/utils/axios-error.util';
 import { CreateUserDto } from 'src/dto/create-user.dto';
 import url from 'url';
 
+export interface KeycloakTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in: number;
+  token_type?: string;
+}
+
+export interface KeycloakRole {
+  id: string;
+  name: string;
+}
+
 @Injectable()
 // It's a client more than a service
 export class KeyclockClient implements OnModuleInit {
-
-
-  private keyclockBaseUrl;
-  private adminUsername;
-  private adminPassword;
+  private keyclockBaseUrl!: string;
+  private adminUsername!: string;
+  private adminPassword!: string;
   // Fetch once, reuse until expiry
-  private adminToken;
-  private adminTokenExpiry;
+  private adminToken!: string;
+  private adminTokenExpiry!: number;
 
   constructor(
     private readonly httpService: HttpService,
@@ -42,28 +51,34 @@ export class KeyclockClient implements OnModuleInit {
     );
   }
 
-  async getNewAccessToken(refresh_token: string) {
+  async getNewAccessToken(
+    refresh_token: string,
+  ): Promise<KeycloakTokenResponse> {
     const newTokenUrl = `${this.keyclockBaseUrl}/realms/smart_qa_assistant/protocol/openid-connect/token`;
-        const params = new url.URLSearchParams({
+    const params = new url.URLSearchParams({
       grant_type: 'refresh_token',
       client_id: 'auth-gateway',
-      refresh_token: refresh_token
+      refresh_token: refresh_token,
     });
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post(newTokenUrl, params.toString()),
+        this.httpService.post<KeycloakTokenResponse>(
+          newTokenUrl,
+          params.toString(),
+        ),
       );
       return data;
-    } catch (error:any) {
-       this.logger.error(normalizeAxiosError(error));
+    } catch (error: unknown) {
+      this.logger.error(normalizeAxiosError(error));
       throw new UnauthorizedException(normalizeAxiosError(error));
     }
   }
 
-  
-
-  async assignRoleToUser(userIdInKeyclock, roleData) {
+  async assignRoleToUser(
+    userIdInKeyclock: string,
+    roleData: KeycloakRole,
+  ): Promise<KeycloakRole[]> {
     const admin_access_token = await this.getAdminToken();
     const assingRoleToUserUrl = this.getAssignRoleToUserUrl(userIdInKeyclock);
 
@@ -77,14 +92,16 @@ export class KeyclockClient implements OnModuleInit {
     const config = this.buildAuthHeaders(admin_access_token);
 
     const { data } = await firstValueFrom(
-      this.httpService.post(assingRoleToUserUrl, roleRepresentation, config),
+      this.httpService.post<KeycloakRole[]>(
+        assingRoleToUserUrl,
+        roleRepresentation,
+        config,
+      ),
     );
     return data;
   }
 
-
-
-  async createUserInKeyclock(createUserDto: CreateUserDto) {
+  async createUserInKeyclock(createUserDto: CreateUserDto): Promise<string> {
     const admin_access_token = await this.getAdminToken();
     const createUserInkKeyclockUrl = this.getUsersAPI_Url();
 
@@ -110,7 +127,8 @@ export class KeyclockClient implements OnModuleInit {
         config,
       ),
     );
-    const userIdInKeyclock = headers.location.split('/').at(-1);
+    const location = (headers as Record<string, string>).location;
+    const userIdInKeyclock = location.split('/').at(-1) as string;
     return userIdInKeyclock;
   }
 
@@ -118,7 +136,10 @@ export class KeyclockClient implements OnModuleInit {
     return `${this.keyclockBaseUrl}/admin/realms/smart_qa_assistant/users`;
   }
 
-  async login(username: string, password: string) {
+  async login(
+    username: string,
+    password: string,
+  ): Promise<KeycloakTokenResponse> {
     const keyclockLoginUrl = this.getKeyclockUserLoginUrl();
     const params = new url.URLSearchParams({
       grant_type: 'password',
@@ -129,11 +150,14 @@ export class KeyclockClient implements OnModuleInit {
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post(keyclockLoginUrl, params.toString()),
+        this.httpService.post<KeycloakTokenResponse>(
+          keyclockLoginUrl,
+          params.toString(),
+        ),
       );
       return data;
-    } catch (error:any) {
-       this.logger.error(normalizeAxiosError(error));
+    } catch (error: unknown) {
+      this.logger.error(normalizeAxiosError(error));
       throw new UnauthorizedException(normalizeAxiosError(error));
     }
   }
@@ -142,23 +166,23 @@ export class KeyclockClient implements OnModuleInit {
     return `${this.keyclockBaseUrl}/realms/smart_qa_assistant/protocol/openid-connect/token`;
   }
 
-  async getRoleByName(roleName) {
+  async getRoleByName(roleName: string): Promise<KeycloakRole> {
     const admin_access_token = await this.getAdminToken();
     const getRealmUrl = this.getRoleByNameUrl(roleName);
 
     const config = this.buildAuthHeaders(admin_access_token);
 
     const { data } = await firstValueFrom(
-      this.httpService.get(getRealmUrl, config),
+      this.httpService.get<KeycloakRole>(getRealmUrl, config),
     );
     return data;
   }
 
-  getRoleByNameUrl(roleName: any) {
+  getRoleByNameUrl(roleName: string) {
     return `${this.keyclockBaseUrl}/admin/realms/smart_qa_assistant/roles/${roleName}`;
   }
 
-  private async getAdminToken() {
+  private async getAdminToken(): Promise<string> {
     if (this.adminToken && Date.now() < this.adminTokenExpiry) {
       return this.adminToken;
     }
@@ -172,13 +196,16 @@ export class KeyclockClient implements OnModuleInit {
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post(adminLoginUrl, params.toString()),
+        this.httpService.post<KeycloakTokenResponse>(
+          adminLoginUrl,
+          params.toString(),
+        ),
       );
       this.adminToken = data.access_token;
       this.adminTokenExpiry = Date.now() + (data.expires_in - 30) * 1000; // 30s buffer
       return this.adminToken;
-    } catch (error:any) {
-      throw new InternalServerErrorException(normalizeAxiosError(error.message))
+    } catch (error: unknown) {
+      throw new InternalServerErrorException(normalizeAxiosError(error));
     }
   }
 
@@ -186,7 +213,10 @@ export class KeyclockClient implements OnModuleInit {
     return `${this.keyclockBaseUrl}/realms/master/protocol/openid-connect/token`;
   }
 
-  async changePassword(userId, newPassword) {
+  async changePassword(
+    userId: string,
+    newPassword: string,
+  ): Promise<Record<string, never>> {
     const admin_access_token = await this.getAdminToken();
 
     const keyclockResetPasswordUrl = this.getKeyclockResetPasswordUrl(userId);
@@ -201,19 +231,19 @@ export class KeyclockClient implements OnModuleInit {
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.put(
+        this.httpService.put<Record<string, never>>(
           keyclockResetPasswordUrl,
           credentialRepresentation,
           config,
         ),
       );
       return data;
-    } catch (error:any) {
+    } catch (error: unknown) {
       throw new InternalServerErrorException(normalizeAxiosError(error));
     }
   }
 
-  private getKeyclockResetPasswordUrl(userId: any) {
+  private getKeyclockResetPasswordUrl(userId: string) {
     return `${this.keyclockBaseUrl}/admin/realms/smart_qa_assistant/users/${userId}/reset-password`;
   }
 
@@ -226,32 +256,24 @@ export class KeyclockClient implements OnModuleInit {
     };
   }
 
-  private getAssignRoleToUserUrl(userIdInKeyclock) {
+  private getAssignRoleToUserUrl(userIdInKeyclock: string) {
     return `${this.keyclockBaseUrl}/admin/realms/smart_qa_assistant/users/${userIdInKeyclock}/role-mappings/realm`;
   }
 
-
-    async deleteUserInKeyclock(userId: string) {
+  async deleteUserInKeyclock(userId: string): Promise<string> {
     const admin_access_token = await this.getAdminToken();
     const deleteUsersEndpoint = this.getDeleteUserUrl(userId);
 
     const config = this.buildAuthHeaders(admin_access_token);
 
     const { headers } = await firstValueFrom(
-      this.httpService.delete(
-        deleteUsersEndpoint,
-        config,
-      ),
+      this.httpService.delete(deleteUsersEndpoint, config),
     );
-    const userIdInKeyclock = headers.location.split('/').at(-1);
-    return userIdInKeyclock;
-  }
-  getDeleteUserUrl(userId:string) {
-    return this.getUsersAPI_Url() +"/"+userId;
+    const location = (headers as Record<string, string>).location;
+    return location.split('/').at(-1) as string;
   }
 
-  
-
-
- 
+  getDeleteUserUrl(userId: string) {
+    return this.getUsersAPI_Url() + '/' + userId;
   }
+}

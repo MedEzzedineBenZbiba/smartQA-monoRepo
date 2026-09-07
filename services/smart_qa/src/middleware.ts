@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { refreshAccessToken } from "./services/auth-gateway.service";
 import { decrypt } from "./lib/encryptSession";
+import { SessionData } from "./types/sessionData.type";
 
 const PROTECTED_ADMIN_PATHS = ["/admin/dashboard", "/admin/employees"];
 
@@ -22,7 +23,7 @@ const CONNECT_GITHUB_PATH = "/connect-github"; // ← NEW
 const INGESTION_BASE_URL =
   process.env.INGESTION_SERVICE_URL ?? "http://localhost:8002";
 
-function decodePayload(token: string) {
+function decodePayload(token: string): JwtPayload | null {
   try {
     const parts = token.split(".");
     return JSON.parse(Buffer.from(parts[1], "base64").toString());
@@ -30,13 +31,17 @@ function decodePayload(token: string) {
     return null;
   }
 }
-
-function isExpired(payload: any): boolean {
-  const now = Math.floor(Date.now() / 1000);
-  return payload?.exp && payload.exp < now;
+interface JwtPayload {
+  exp?: number;
+  realm_access?: { roles?: string[] };
 }
 
-function isSuperAdmin(payload: any): boolean {
+function isExpired(payload: JwtPayload | null): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  return !!payload?.exp && payload.exp < now;
+}
+
+function isSuperAdmin(payload: JwtPayload | null): boolean {
   const roles: string[] = payload?.realm_access?.roles ?? [];
   return roles.includes("superadmin");
 }

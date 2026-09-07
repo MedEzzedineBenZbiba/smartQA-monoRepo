@@ -1,8 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable prettier/prettier */
 import { HttpService } from '@nestjs/axios';
 import {
   Injectable,
@@ -13,7 +8,16 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { AxiosError } from 'axios';
 import { normalizeError } from 'src/common/utils/axios-error.util';
+
+interface ConsulHealthCheck {
+  AggregatedStatus: string;
+  Service: {
+    Address: string;
+    Port: number;
+  };
+}
 
 @Injectable()
 export class ConsulClient implements OnModuleInit, OnModuleDestroy {
@@ -34,7 +38,8 @@ export class ConsulClient implements OnModuleInit, OnModuleDestroy {
   // Register the service in Consul when the module initializes
   async onModuleInit() {
     this.consulUrl = this.configService.getOrThrow<string>('ConsulBaseUrl');
-    this.serviceId = this.configService.get('SERVICE_NAME') + '-' + Date.now();
+    this.serviceId =
+      this.configService.get<string>('SERVICE_NAME') + '-' + Date.now();
     this.serviceHost = this.configService.getOrThrow('SERVICE_HOST');
     this.servicePort = Number.parseInt(
       this.configService.getOrThrow<string>('SERVICE_PORT'),
@@ -46,9 +51,9 @@ export class ConsulClient implements OnModuleInit, OnModuleDestroy {
     try {
       await firstValueFrom(this.httpService.put(registerUrl, instanceData));
       this.logger.log(this.serviceName + ' is registered with Consul');
-    } catch (error:any) {
+    } catch (error) {
       this.logger.error(
-        `${this.serviceName} - ${JSON.stringify(normalizeError(error))}`,
+        `${this.serviceName} - ${JSON.stringify(normalizeError(error as AxiosError))}`,
       );
     }
   }
@@ -60,9 +65,9 @@ export class ConsulClient implements OnModuleInit, OnModuleDestroy {
     try {
       await firstValueFrom(this.httpService.put(deregisterUrl, instanceData));
       this.logger.log(this.serviceId + ' is deregistered with Consul');
-    } catch (error:any) {
+    } catch (error) {
       this.logger.error(
-        this.serviceName + JSON.stringify(normalizeError(error)),
+        this.serviceName + JSON.stringify(normalizeError(error as AxiosError)),
       );
     }
   }
@@ -107,9 +112,13 @@ export class ConsulClient implements OnModuleInit, OnModuleDestroy {
     return this.resolveHealthyBaseUrl(instances);
   }
 
-  private async fetchInstances(serviceName: string): Promise<any> {
+  private async fetchInstances(
+    serviceName: string,
+  ): Promise<ConsulHealthCheck[]> {
     const { data } = await firstValueFrom(
-      this.httpService.get(this.getDiscoverUrl(serviceName)),
+      this.httpService.get<ConsulHealthCheck[]>(
+        this.getDiscoverUrl(serviceName),
+      ),
     );
     return data;
   }
@@ -118,13 +127,14 @@ export class ConsulClient implements OnModuleInit, OnModuleDestroy {
     return `${this.consulUrl}/v1/agent/health/service/name/${serviceName}`;
   }
 
-  private resolveHealthyBaseUrl(instances): string {
-    let healthy;
+  private resolveHealthyBaseUrl(instances: ConsulHealthCheck[]): string {
+    let healthy: ConsulHealthCheck | undefined;
     try {
       healthy = instances.find((i) => i.AggregatedStatus === 'passing');
-    } catch (error:any) {
-      this.logger.error(error)
-      throw new NotFoundException(error.message);
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(err);
+      throw new NotFoundException(err.message);
     }
     if (!healthy) throw new NotFoundException(`No healthy instance found`);
     return `http://${healthy.Service.Address}:${healthy.Service.Port}`;

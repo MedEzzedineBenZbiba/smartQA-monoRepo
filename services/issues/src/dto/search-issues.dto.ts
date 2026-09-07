@@ -13,7 +13,7 @@ import { Type } from 'class-transformer';
 export class SearchIssuesDto {
   @IsString()
   @IsNotEmpty()
-  query: string;
+  query!: string;
 
   @IsOptional()
   @IsIn(['open', 'closed', 'all'])
@@ -44,12 +44,12 @@ export interface SearchedIssue {
   _id: string;
   issueId: string;
   title: string;
-  body: string;
+  body: string | undefined | null;
   state: string;
   cluster_id: number | null;
   cluster_label: string | null;
-  created_at: string | null;
-  updated_at: string | null;
+  created_at: Date | string | null;
+  updated_at: Date | string | null;
   url: string;
   similarity_score: number | null; // null for text-only fallback results
   isPoorlyDescribed: boolean;

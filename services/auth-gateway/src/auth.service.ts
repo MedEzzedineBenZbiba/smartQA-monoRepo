@@ -9,21 +9,37 @@ import {
 } from '@nestjs/common';
 
 import { JwtService } from '@nestjs/jwt';
-
 import { ConfigService } from '@nestjs/config';
 
 import { KeyclockClient } from './clients/keyclock.client';
-
 import { CreateUserDto } from './dto/create-user.dto';
 import { UserServiceClient } from './clients/user-service.client';
 import { normalizeAxiosError } from './common/utils/axios-error.util';
 import { KafkaProducerClient } from './clients/kafka-producer.client';
 import { JWT_Change_PASSWORD_EXPIRY } from './constants/auth.constants';
 
+interface ResetTokenPayload {
+  email: string;
+}
+
+interface ChangePasswordTokenPayload {
+  userId: string;
+}
+
+interface AccessTokenPayload {
+  sub: string;
+  email: string;
+}
+
+interface UserRecord {
+  id: string;
+  email: string;
+  resetPasswordToken: string;
+}
+
 @Injectable()
 export class AuthService implements OnModuleInit {
-
-  private changePasswordSecret;
+  private changePasswordSecret!: string;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -44,47 +60,44 @@ export class AuthService implements OnModuleInit {
     return await this.keyclockClient.login(username, password);
   }
 
-  async  getNewAccessToken(refresh_token: string) {
-   return await this.keyclockClient.getNewAccessToken(refresh_token);
+  async getNewAccessToken(refresh_token: string) {
+    return await this.keyclockClient.getNewAccessToken(refresh_token);
   }
 
   async signup(createUserDto: CreateUserDto) {
     let userIdInKeyclock: string | null = null;
     try {
-      // keyclock part: save user data in keyclock for future authN/authnZ (identity provider responsability)
       userIdInKeyclock =
         await this.keyclockClient.createUserInKeyclock(createUserDto);
 
-      // getRoleId : i think i should save it in an env variable instead of doing a http request each time
       const roleData = await this.keyclockClient.getRoleByName(
         createUserDto.role,
       );
 
-      // assing role to the user
       await this.keyclockClient.assignRoleToUser(userIdInKeyclock, roleData);
 
       await this.userServiceClient.saveUser(createUserDto, userIdInKeyclock);
 
       return { message: 'done', userId: userIdInKeyclock };
-    } catch (error: any) {
-      // Saga / Compensating transaction: roll back Keycloak user if it was created
+    } catch (error: unknown) {
       if (userIdInKeyclock) {
         try {
           await this.keyclockClient.deleteUserInKeyclock(userIdInKeyclock);
           this.logger.warn(`Rolled back Keycloak user: ${userIdInKeyclock}`);
-        } catch (rollbackError: any) {
-          // Rollback failed — this is now a ghost user in Keycloak, needs human attention
+        } catch (rollbackError: unknown) {
           this.logger.error(
-            `CRITICAL: Failed to rollback Keycloak user ${userIdInKeyclock}: ${JSON.stringify(normalizeAxiosError(rollbackError))}`,
+            `CRITICAL: Failed to rollback Keycloak user ${userIdInKeyclock}: ${JSON.stringify(
+              normalizeAxiosError(rollbackError),
+            )}`,
           );
         }
       }
-        this.logger.error(error);
-    throw new ConflictException(normalizeAxiosError(error));
+      this.logger.error(error);
+      throw new ConflictException(normalizeAxiosError(error));
     }
   }
 
-  async forgetPassowrd(email: any) {
+  async forgetPassowrd(email: string) {
     try {
       const resetPasswordToken = await this.generateResetToken({ email });
       await this.userServiceClient.updateResetPasswordProperty(
@@ -95,37 +108,40 @@ export class AuthService implements OnModuleInit {
         email,
         resetPasswordToken,
       });
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      throw new InternalServerErrorException(
+        error instanceof Error ? error.message : 'Unknown error',
+      );
     }
   }
 
-  async generateResetToken(payload) {
+  async generateResetToken(payload: ResetTokenPayload): Promise<string> {
     try {
       return await this.jwtService.signAsync(payload);
     } catch (error) {
       this.logger.error(error);
+      throw error;
     }
   }
 
-  async verifyResetPasswordToken(resetToken: any) {
-    // if it is valid redirect user to new page to choose a new password
-    // else not authorized page is shown
-    let verifiedToken;
+  async verifyResetPasswordToken(resetToken: string) {
+    let verifiedToken: ResetTokenPayload;
     try {
-      verifiedToken = await this.jwtService.verifyAsync(resetToken);
-    } catch (error: any) {
+      verifiedToken =
+        await this.jwtService.verifyAsync<ResetTokenPayload>(resetToken);
+    } catch (error: unknown) {
       this.logger.error(normalizeAxiosError(error));
-      throw new UnauthorizedException(error.message);
+      throw new UnauthorizedException(
+        error instanceof Error ? error.message : 'Unknown error',
+      );
     }
 
-    const user = await this.userServiceClient.getUserByEmail(
+    const user: UserRecord = await this.userServiceClient.getUserByEmail(
       verifiedToken.email,
     );
     if (user.resetPasswordToken !== resetToken)
       throw new UnauthorizedException('reset token is incorrect');
 
-    // reset token should be used one time only
     await this.userServiceClient.updateResetPasswordProperty(
       verifiedToken.email,
       '',
@@ -135,10 +151,10 @@ export class AuthService implements OnModuleInit {
   }
 
   async changePassword(
-    newPassword,
-    oldPassowrd?: any,
-    access_token?: any,
-    resetToken?: any,
+    newPassword: string,
+    oldPassowrd?: string | null,
+    access_token?: string | null,
+    resetToken?: string | null,
   ) {
     try {
       if (resetToken) {
@@ -154,38 +170,40 @@ export class AuthService implements OnModuleInit {
           return { message: 'updated' };
         }
       }
-    } catch (error: any) {
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      throw new InternalServerErrorException(
+        error instanceof Error ? error.message : 'Unknown error',
+      );
     }
     throw new BadRequestException('bad request');
   }
 
-  async generateChangePasswordToken(userId) {
-    const payload = {
-      userId,
-    };
-    const tmpJWTToUpdatePassword = await this.jwtService.signAsync(payload, {
+  async generateChangePasswordToken(userId: string): Promise<string> {
+    const payload: ChangePasswordTokenPayload = { userId };
+    return await this.jwtService.signAsync(payload, {
       secret: this.changePasswordSecret,
       expiresIn: JWT_Change_PASSWORD_EXPIRY,
     });
-
-    return tmpJWTToUpdatePassword;
   }
 
-  async getUserId(resetToken) {
+  async getUserId(resetToken: string): Promise<string> {
     const payload = await this.verifyToken(resetToken);
     return payload.userId;
   }
 
-  async verifyToken(resetToken) {
-    const payload = await this.jwtService.verifyAsync(resetToken, {
-      secret: this.changePasswordSecret,
-    });
-    return payload;
+  async verifyToken(resetToken: string): Promise<ChangePasswordTokenPayload> {
+    return await this.jwtService.verifyAsync<ChangePasswordTokenPayload>(
+      resetToken,
+      { secret: this.changePasswordSecret },
+    );
   }
 
-  extractUserDataFromAccesstoken(access_token) {
-    const { sub, email } = this.jwtService.decode(access_token);
+  extractUserDataFromAccesstoken(access_token: string): {
+    userId: string;
+    email: string;
+  } {
+    const { sub, email } =
+      this.jwtService.decode<AccessTokenPayload>(access_token);
     return { userId: sub, email };
   }
 }

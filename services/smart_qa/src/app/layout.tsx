@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/Header";
-import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { decrypt } from "@/lib/encryptSession";
 import AuthHydrator from "@/components/AuthHydrator";
+import { SessionData } from "@/types/sessionData.type";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

@@ -42,9 +42,11 @@ export class GithubTokenService {
 
       const token = this.githubTokenRepository.create(dto);
       return await this.githubTokenRepository.save(token);
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -53,9 +55,11 @@ export class GithubTokenService {
       return await this.githubTokenRepository.findOne({
         where: { userId },
       });
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -65,10 +69,11 @@ export class GithubTokenService {
       if (result.affected === 0) {
         throw new NotFoundException(`No GitHub token found for user ${userId}`);
       }
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -78,9 +83,11 @@ export class GithubTokenService {
         where: { userId },
       });
       return count > 0;
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 }

@@ -6,10 +6,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
+import { AxiosError } from 'axios';
 import { KafkaProducerClient } from './clients/kafka-producer.client';
 import { ConfigService } from '@nestjs/config';
 import {
-  GITHUB_API_ISSUES_URL,
   GITHUB_ISSUES_PER_PAGE,
   GITHUB_OAUTH_URL,
 } from './constants/github.constants';
@@ -19,6 +19,46 @@ import {
   UserServiceClient,
   GithubTokenData,
 } from './clients/user-service.client';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
+
+interface GithubTokenExchangeResponse {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+  expires_in: number;
+  refresh_token: string;
+  refresh_token_expires_in: number;
+}
+
+interface GithubIssue {
+  pull_request?: unknown;
+  [key: string]: unknown;
+}
+
+interface GithubInstallation {
+  id: number;
+  target_type: string;
+  account: {
+    login: string;
+    id: number;
+  };
+}
+
+interface GithubInstallationsResponse {
+  installations: GithubInstallation[];
+}
+
+interface GithubRepo {
+  name: string;
+  full_name: string;
+  description: string | null;
+  html_url: string;
+  private: boolean;
+}
+
+interface GithubReposResponse {
+  repositories: GithubRepo[];
+}
 
 @Injectable()
 export class IngestionService {
@@ -37,10 +77,13 @@ export class IngestionService {
   // ── GitHub Apps  ─────────────────────────────────────────────────────────────────
 
   buildAuthorizationUrl(returnTo?: string): string {
-    const client_id = this.configService.getOrThrow('GITHUB_APP_CLIENT_ID');
+    const client_id = this.configService.getOrThrow<string>(
+      'GITHUB_APP_CLIENT_ID',
+    );
     const githubAuthorizeUrl =
-      this.configService.getOrThrow('githubAuthorizeUrl');
-    const redirectUrl = this.configService.getOrThrow('redirectUrlPath');
+      this.configService.getOrThrow<string>('githubAuthorizeUrl');
+    const redirectUrl =
+      this.configService.getOrThrow<string>('redirectUrlPath');
 
     let url =
       githubAuthorizeUrl +
@@ -67,9 +110,13 @@ export class IngestionService {
     const exchangeCodeUrl = this.buildExchangeCodeUrl(code);
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post(exchangeCodeUrl, null, {
-          headers: { Accept: 'application/json' },
-        }),
+        this.httpService.post<GithubTokenExchangeResponse>(
+          exchangeCodeUrl,
+          null,
+          {
+            headers: { Accept: 'application/json' },
+          },
+        ),
       );
 
       if (!data.access_token || data.error) {
@@ -91,16 +138,17 @@ export class IngestionService {
       }
 
       // ── Build the frontend redirect target ──────────────────────────────
-      const frontendBase = this.configService.getOrThrow('FRONTEND_BASE_URL');
+      const frontendBase =
+        this.configService.getOrThrow<string>('FRONTEND_BASE_URL');
       const safePath = this.isSafeReturnPath(returnTo ?? '')
         ? returnTo!
         : this.DEFAULT_RETURN_PATH;
 
       return `${frontendBase}/connect-github?returnTo=${encodeURIComponent(safePath)}&github=connected`;
       // ── end ───────────────────────────────────────────────────────────
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new UnauthorizedException(error.message);
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
+      throw new UnauthorizedException((error as Error).message);
     }
   }
   // Temporary in-memory slot ONLY for the brief window between OAuth callback
@@ -144,14 +192,14 @@ export class IngestionService {
     try {
       while (pagesRemaining) {
         const { data, headers } = await firstValueFrom(
-          this.httpService.get(currentUrl, requestConfig),
+          this.httpService.get<GithubIssue[]>(currentUrl, requestConfig),
         );
-        await this.kafkaProducerClient.publishIssues(data, userId);
+        this.kafkaProducerClient.publishIssues(data, userId);
 
-        const linkHeader = headers.link;
-        pagesRemaining = linkHeader && linkHeader.includes(`rel=\"next\"`);
-        if (pagesRemaining) {
-          currentUrl = linkHeader.match(nextPattern)[0];
+        const linkHeader = headers.link as string | undefined;
+        pagesRemaining = Boolean(linkHeader?.includes('rel="next"'));
+        if (pagesRemaining && linkHeader) {
+          currentUrl = nextPattern.exec(linkHeader)?.[0] ?? currentUrl;
         }
       }
 
@@ -161,8 +209,10 @@ export class IngestionService {
           userId,
         );
       }
-    } catch (error: any) {
-      throw new InternalServerErrorException(normalizeError(error));
+    } catch (error) {
+      throw new InternalServerErrorException(
+        normalizeError(error as AxiosError),
+      );
     }
   }
 
@@ -191,19 +241,19 @@ export class IngestionService {
     try {
       while (pagesRemaining) {
         const { data, headers } = await firstValueFrom(
-          this.httpService.get(currentUrl, requestConfig),
+          this.httpService.get<GithubIssue[]>(currentUrl, requestConfig),
         );
 
         // Filter out pull requests (GitHub API includes them in /issues)
-        const issues = data.filter((item: any) => !item.pull_request);
+        const issues = data.filter((item) => !item.pull_request);
 
-        await this.kafkaProducerClient.publishIssues(issues, userId);
+        this.kafkaProducerClient.publishIssues(issues, userId);
         totalPublished += issues.length;
 
-        const linkHeader = headers.link;
-        pagesRemaining = linkHeader && linkHeader.includes(`rel=\"next\"`);
-        if (pagesRemaining) {
-          currentUrl = linkHeader.match(nextPattern)[0];
+        const linkHeader = headers.link as string | undefined;
+        pagesRemaining = Boolean(linkHeader?.includes('rel="next"'));
+        if (pagesRemaining && linkHeader) {
+          currentUrl = nextPattern.exec(linkHeader)?.[0] ?? currentUrl;
         }
       }
 
@@ -211,8 +261,10 @@ export class IngestionService {
         `Repo ingestion complete: ${orgName}/${repoName} → ${totalPublished} issues published`,
       );
       return totalPublished;
-    } catch (error: any) {
-      throw new InternalServerErrorException(normalizeError(error));
+    } catch (error) {
+      throw new InternalServerErrorException(
+        normalizeError(error as AxiosError),
+      );
     }
   }
 
@@ -226,29 +278,32 @@ export class IngestionService {
     const accessToken = await this.getValidAccessToken(userId);
     try {
       const { data } = await firstValueFrom(
-        this.httpService.get('https://api.github.com/user/installations', {
-          headers: {
-            Accept: 'application/vnd.github+json',
-            Authorization: `Bearer ${accessToken}`,
-            'X-GitHub-Api-Version': '2022-11-28',
+        this.httpService.get<GithubInstallationsResponse>(
+          'https://api.github.com/user/installations',
+          {
+            headers: {
+              Accept: 'application/vnd.github+json',
+              Authorization: `Bearer ${accessToken}`,
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
           },
-        }),
+        ),
       );
 
       return (
         data.installations
           // Drop the personal-account installation — QA repo picker is org-only.
           // Remove this filter if you also want to let users pick personal repos.
-          .filter((inst: any) => inst.target_type === 'Organization')
-          .map((inst: any) => ({
+          .filter((inst) => inst.target_type === 'Organization')
+          .map((inst) => ({
             login: inst.account.login,
             id: inst.account.id,
             installationId: inst.id,
             type: inst.target_type,
           }))
       );
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
         'Failed to fetch GitHub installations',
       );
@@ -270,7 +325,7 @@ export class IngestionService {
     const accessToken = await this.getValidAccessToken(userId);
     try {
       const { data } = await firstValueFrom(
-        this.httpService.get(
+        this.httpService.get<GithubReposResponse>(
           `https://api.github.com/user/installations/${installationId}/repositories`,
           {
             headers: {
@@ -282,15 +337,15 @@ export class IngestionService {
         ),
       );
 
-      return data.repositories.map((repo: any) => ({
+      return data.repositories.map((repo) => ({
         name: repo.name,
         fullName: repo.full_name,
         description: repo.description ?? null,
         url: repo.html_url,
         isPrivate: repo.private,
       }));
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
         `Failed to fetch repos for installation ${installationId}`,
       );
@@ -343,25 +398,31 @@ export class IngestionService {
     current: GithubTokenData,
   ): Promise<GithubTokenData> {
     const params = new URLSearchParams({
-      client_id: this.configService.getOrThrow('GITHUB_APP_CLIENT_ID'),
-      client_secret: this.configService.getOrThrow('GITHUB_APP_CLIENT_SECRET'),
+      client_id: this.configService.getOrThrow<string>('GITHUB_APP_CLIENT_ID'),
+      client_secret: this.configService.getOrThrow<string>(
+        'GITHUB_APP_CLIENT_SECRET',
+      ),
       grant_type: 'refresh_token',
       refresh_token: current.refreshToken,
     });
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post(GITHUB_OAUTH_URL, params.toString(), {
-          headers: { Accept: 'application/json' },
-        }),
+        this.httpService.post<GithubTokenExchangeResponse>(
+          GITHUB_OAUTH_URL,
+          params.toString(),
+          {
+            headers: { Accept: 'application/json' },
+          },
+        ),
       );
 
       const refreshed = this.buildTokenData(data);
       await this.userServiceClient.saveGithubToken(userId, refreshed);
       this.logger.log(`GitHub access token refreshed for user ${userId}`);
       return refreshed;
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new UnauthorizedException('Failed to refresh GitHub access token');
     }
   }
@@ -380,10 +441,10 @@ export class IngestionService {
     );
   }
 
-  private buildTokenData(raw: any): GithubTokenData {
+  private buildTokenData(raw: GithubTokenExchangeResponse): GithubTokenData {
     const now = Date.now();
     return {
-      accessToken: raw.access_token,
+      accessToken: raw.access_token!,
       accessTokenExpiry: new Date(now + raw.expires_in * 1000),
       refreshToken: raw.refresh_token,
       refreshTokenExpiry: new Date(now + raw.refresh_token_expires_in * 1000),
@@ -423,16 +484,23 @@ export class IngestionService {
 
   private buildExchangeCodeUrl(code: string): string {
     const params = new URLSearchParams({
-      client_id: this.configService.getOrThrow('GITHUB_APP_CLIENT_ID'),
-      client_secret: this.configService.getOrThrow('GITHUB_APP_CLIENT_SECRET'),
+      client_id: this.configService.getOrThrow<string>('GITHUB_APP_CLIENT_ID'),
+      client_secret: this.configService.getOrThrow<string>(
+        'GITHUB_APP_CLIENT_SECRET',
+      ),
       code,
-      redirect_uri: this.configService.getOrThrow('GITHUB_CALLBACK_URL'),
+      redirect_uri: this.configService.getOrThrow<string>(
+        'GITHUB_CALLBACK_URL',
+      ),
     });
     return `${GITHUB_OAUTH_URL}?${params}`;
   }
 
   private extractUserId(access_token: string): string {
-    const { sub } = this.jwtService.decode(access_token);
-    return sub;
+    const decoded = this.jwtService.decode<JwtPayload>(access_token);
+    if (!decoded?.sub) {
+      throw new UnauthorizedException('Invalid token: missing sub claim');
+    }
+    return decoded.sub;
   }
 }

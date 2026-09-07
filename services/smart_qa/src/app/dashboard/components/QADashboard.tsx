@@ -25,9 +25,7 @@ function fmt(n: number) {
 function pct(a: number, b: number) {
   return b === 0 ? "0%" : Math.round((a / b) * 100) + "%";
 }
-function shortLabel(label: string, max = 18) {
-  return label.length > max ? label.slice(0, max) + "…" : label;
-}
+
 const BUCKET_LABELS: Record<AgingBucket["bucket"], string> = {
   "0-7": "0–7 days",
   "7-30": "7–30 days",
@@ -254,10 +252,11 @@ export function QADashboard({ stats }: { stats: QADashboardStats }) {
               />
               <Tooltip
                 cursor={{ fill: "#f9fafb" }}
-                formatter={(value: any, _name, item: any) => [
-                  `${value} days`,
-                  item?.payload?.title ?? "Days open",
-                ]}
+                formatter={(
+                  value,
+                  _name,
+                  item: { payload?: { title?: string } },
+                ) => [`${value} days`, item?.payload?.title ?? "Days open"]}
               />
               <Bar
                 dataKey="daysOpen"

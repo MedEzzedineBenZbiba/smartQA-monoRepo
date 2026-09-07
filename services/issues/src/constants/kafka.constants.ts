@@ -1,3 +1,3 @@
 export const KAFKA_TOPICS = {
-    PUBLISH_ISSUES: 'issue_published',
-  } as const;
+  PUBLISH_ISSUES: 'issue_published',
+} as const;

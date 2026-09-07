@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { IngestionService } from './ingestion.service';
-import { UserServiceClient } from './clients/user-service.client';
-import { SyncJobStatus } from './interfaces/sync-job.interface';
-import { SyncFrequency } from './interfaces/sync-job.interface';
+import { UserServiceClient, SyncJobData } from './clients/user-service.client';
+import { SyncFrequency, SyncJobStatus } from './interfaces/sync-job.interface';
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 @Injectable()
 export class SyncJobScheduler {
@@ -18,12 +21,12 @@ export class SyncJobScheduler {
   async handleDueSyncJobs(): Promise<void> {
     this.logger.log('Scheduler: checking for due sync jobs…');
 
-    let duejobs;
+    let duejobs: SyncJobData[];
     try {
       duejobs = await this.userServiceClient.getDueSyncJobs();
-    } catch (error: any) {
+    } catch (error) {
       this.logger.error(
-        `Scheduler: failed to fetch due jobs — ${error.message}`,
+        `Scheduler: failed to fetch due jobs — ${errorMessage(error)}`,
       );
       return;
     }
@@ -41,7 +44,7 @@ export class SyncJobScheduler {
 
   // ── Process a single sync job ─────────────────────────────────────────────
 
-  private async processSyncJob(job: any): Promise<void> {
+  private async processSyncJob(job: SyncJobData): Promise<void> {
     this.logger.log(
       `Scheduler: starting sync for ${job.orgName}/${job.repoName} (jobId=${job.id})`,
     );
@@ -51,9 +54,9 @@ export class SyncJobScheduler {
       await this.userServiceClient.updateSyncJob(job.id, {
         status: SyncJobStatus.SYNCING,
       });
-    } catch (error: any) {
+    } catch (error) {
       this.logger.error(
-        `Scheduler: failed to mark job ${job.id} as syncing — ${error.message}`,
+        `Scheduler: failed to mark job ${job.id} as syncing — ${errorMessage(error)}`,
       );
       return;
     }
@@ -82,17 +85,19 @@ export class SyncJobScheduler {
         `Scheduler: job ${job.id} completed — ` +
           `${issueCount} new issues, next sync at ${nextSyncAt.toISOString()}`,
       );
-    } catch (error: any) {
-      this.logger.error(`Scheduler: job ${job.id} failed — ${error.message}`);
+    } catch (error) {
+      this.logger.error(
+        `Scheduler: job ${job.id} failed — ${errorMessage(error)}`,
+      );
 
       // Mark as failed — QA can see this in the UI and resume manually
       try {
         await this.userServiceClient.updateSyncJob(job.id, {
           status: SyncJobStatus.FAILED,
         });
-      } catch (updateError: any) {
+      } catch (updateError) {
         this.logger.error(
-          `Scheduler: could not mark job ${job.id} as failed — ${updateError.message}`,
+          `Scheduler: could not mark job ${job.id} as failed — ${errorMessage(updateError)}`,
         );
       }
     }

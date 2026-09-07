@@ -21,7 +21,7 @@ import { SyncJobService } from './sync-job.service';
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: async () => {
+      useFactory: () => {
         const configService = new ConfigService();
         return {
           type: 'postgres',

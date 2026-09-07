@@ -20,8 +20,8 @@ function useDebounce(
       setDebounced(value);
       setCurrentPage(1);
     }, delay);
-    return () => clearTimeout(timer); // clears on every keystroke
-  }, [value, delay]);
+    return () => clearTimeout(timer);
+  }, [value, delay, setCurrentPage]);
 
   return debounced;
 }
@@ -30,14 +30,14 @@ export default function EmployeesList() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false);
+  // const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
   const debouncedSearch = useDebounce(search, 400, setCurrentPage); // waits 400ms after typing stops
   useEffect(() => {
     const fetchEmployees = async () => {
-      setLoading(true);
+      // setLoading(true);
       const result = await getUsers(
         currentPage,
         LIMIT,
@@ -48,7 +48,7 @@ export default function EmployeesList() {
         setEmployees(result.data);
         setTotalPages(result.totalPages);
       }
-      setLoading(false);
+      // setLoading(false);
     };
     fetchEmployees();
   }, [currentPage, debouncedSearch, selectedRoles]); // ✅ re-fetches whenever page changes

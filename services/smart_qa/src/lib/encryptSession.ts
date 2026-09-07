@@ -1,5 +1,7 @@
 // lib/encryptSession.ts
+import { SessionData } from "@/types/sessionData.type";
 import { EncryptJWT, jwtDecrypt } from "jose";
+import { JwtPayload } from "jwt-decode";
 
 const keyBytes = Uint8Array.from(
   atob("bOZjHw/QH9UoxgK2Qt9VBKvCrSghhrdRVTlXyb/MOeQ="),
@@ -12,7 +14,7 @@ export async function encrypt(sessionData: SessionData) {
     .encrypt(keyBytes);
 }
 
-export async function decrypt(data: string | Uint8Array) {
+export async function decrypt(data: string | Uint8Array): Promise<JwtPayload> {
   const { payload } = await jwtDecrypt(data, keyBytes);
   return payload;
 }

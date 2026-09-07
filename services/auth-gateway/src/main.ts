@@ -16,10 +16,11 @@ async function bootstrap() {
   app.use(cookieParser());
   const port = configService.getOrThrow<number>('SERVICE_PORT');
   await app.listen(port);
-  
-  Logger.log(
-    `Auth Gateway running on port ${port}`,
-    'Bootstrap'
-  );
+
+  Logger.log(`Auth Gateway running on port ${port}`, 'Bootstrap');
 }
-bootstrap();
+
+bootstrap().catch((error: unknown) => {
+  Logger.error('Failed to bootstrap application', error, 'Bootstrap');
+  process.exit(1);
+});

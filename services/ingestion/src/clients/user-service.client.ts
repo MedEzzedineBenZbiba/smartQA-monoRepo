@@ -3,11 +3,11 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
-  NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { AxiosError } from 'axios';
 import { ConsulClient } from './consul.client';
 import { normalizeError } from 'src/common/utils/axios-error.util';
 import { SyncFrequency, SyncJobStatus } from '../interfaces/sync-job.interface';
@@ -42,6 +42,10 @@ export interface UpdateSyncJobData {
   issueCount?: number;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 @Injectable()
 export class UserServiceClient implements OnModuleInit {
   private userServiceName!: string;
@@ -68,20 +72,24 @@ export class UserServiceClient implements OnModuleInit {
           userId,
         }),
       );
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error);
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
+      throw new InternalServerErrorException(errorMessage(error));
     }
   }
 
-  async getLastIngestionDate(userId: string) {
+  async getLastIngestionDate(userId: string): Promise<Date | null> {
     const url = (await this.getLastIngestionDatePropertyUrl()) + '/' + userId;
     try {
-      const { data } = await firstValueFrom(this.httpService.get(url));
+      const { data } = await firstValueFrom(
+        this.httpService.get<Date | null>(url),
+      );
       return data;
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message + ' ' + error.name);
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
+      throw new InternalServerErrorException(
+        `${errorMessage(error)} ${(error as Error).name}`,
+      );
     }
   }
 
@@ -96,10 +104,10 @@ export class UserServiceClient implements OnModuleInit {
       await firstValueFrom(
         this.httpService.post(url, { userId, ...tokenData }),
       );
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to save GitHub token: ${error.message}`,
+        `Failed to save GitHub token: ${errorMessage(error)}`,
       );
     }
   }
@@ -107,14 +115,16 @@ export class UserServiceClient implements OnModuleInit {
   async getGithubToken(userId: string): Promise<GithubTokenData | null> {
     const url = `${await this.getBaseUrl()}/users/github-tokens/${userId}`;
     try {
-      const { data } = await firstValueFrom(this.httpService.get(url));
+      const { data } = await firstValueFrom(
+        this.httpService.get<GithubTokenData | null>(url),
+      );
       return data ?? null;
-    } catch (error: any) {
+    } catch (error) {
       // 404 means no token yet — not an error, just not connected
-      if (error?.response?.status === 404) return null;
-      this.logger.error(normalizeError(error));
+      if ((error as AxiosError)?.response?.status === 404) return null;
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to get GitHub token: ${error.message}`,
+        `Failed to get GitHub token: ${errorMessage(error)}`,
       );
     }
   }
@@ -122,12 +132,12 @@ export class UserServiceClient implements OnModuleInit {
   async hasGithubToken(userId: string): Promise<boolean> {
     const url = `${await this.getBaseUrl()}/users/github-tokens/${userId}/exists`;
     try {
-      const { data } = await firstValueFrom(this.httpService.get(url));
+      const { data } = await firstValueFrom(this.httpService.get<boolean>(url));
       return data === true;
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to check GitHub token: ${error.message}`,
+        `Failed to check GitHub token: ${errorMessage(error)}`,
       );
     }
   }
@@ -136,10 +146,10 @@ export class UserServiceClient implements OnModuleInit {
     const url = `${await this.getBaseUrl()}/users/github-tokens/${userId}`;
     try {
       await firstValueFrom(this.httpService.delete(url));
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to delete GitHub token: ${error.message}`,
+        `Failed to delete GitHub token: ${errorMessage(error)}`,
       );
     }
   }
@@ -162,13 +172,13 @@ export class UserServiceClient implements OnModuleInit {
     const url = `${await this.getBaseUrl()}/users/sync-jobs`;
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post(url, { userId, ...jobData }),
+        this.httpService.post<SyncJobData>(url, { userId, ...jobData }),
       );
       return data;
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to create sync job: ${error.message}`,
+        `Failed to create sync job: ${errorMessage(error)}`,
       );
     }
   }
@@ -176,12 +186,14 @@ export class UserServiceClient implements OnModuleInit {
   async getSyncJobs(userId: string): Promise<SyncJobData[]> {
     const url = `${await this.getBaseUrl()}/users/sync-jobs/user/${userId}`;
     try {
-      const { data } = await firstValueFrom(this.httpService.get(url));
+      const { data } = await firstValueFrom(
+        this.httpService.get<SyncJobData[]>(url),
+      );
       return data ?? [];
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to get sync jobs: ${error.message}`,
+        `Failed to get sync jobs: ${errorMessage(error)}`,
       );
     }
   }
@@ -189,12 +201,14 @@ export class UserServiceClient implements OnModuleInit {
   async getDueSyncJobs(): Promise<SyncJobData[]> {
     const url = `${await this.getBaseUrl()}/users/sync-jobs/due`;
     try {
-      const { data } = await firstValueFrom(this.httpService.get(url));
+      const { data } = await firstValueFrom(
+        this.httpService.get<SyncJobData[]>(url),
+      );
       return data ?? [];
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to get due sync jobs: ${error.message}`,
+        `Failed to get due sync jobs: ${errorMessage(error)}`,
       );
     }
   }
@@ -203,10 +217,10 @@ export class UserServiceClient implements OnModuleInit {
     const url = `${await this.getBaseUrl()}/users/sync-jobs/${id}`;
     try {
       await firstValueFrom(this.httpService.patch(url, updates));
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to update sync job: ${error.message}`,
+        `Failed to update sync job: ${errorMessage(error)}`,
       );
     }
   }
@@ -215,10 +229,10 @@ export class UserServiceClient implements OnModuleInit {
     const url = `${await this.getBaseUrl()}/users/sync-jobs/${id}/pause`;
     try {
       await firstValueFrom(this.httpService.post(url, {}));
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to pause sync job: ${error.message}`,
+        `Failed to pause sync job: ${errorMessage(error)}`,
       );
     }
   }
@@ -227,10 +241,10 @@ export class UserServiceClient implements OnModuleInit {
     const url = `${await this.getBaseUrl()}/users/sync-jobs/${id}/resume`;
     try {
       await firstValueFrom(this.httpService.post(url, {}));
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to resume sync job: ${error.message}`,
+        `Failed to resume sync job: ${errorMessage(error)}`,
       );
     }
   }
@@ -239,10 +253,10 @@ export class UserServiceClient implements OnModuleInit {
     const url = `${await this.getBaseUrl()}/users/sync-jobs/${id}`;
     try {
       await firstValueFrom(this.httpService.delete(url));
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error) {
+      this.logger.error(normalizeError(error as AxiosError));
       throw new InternalServerErrorException(
-        `Failed to delete sync job: ${error.message}`,
+        `Failed to delete sync job: ${errorMessage(error)}`,
       );
     }
   }

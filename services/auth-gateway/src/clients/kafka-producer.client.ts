@@ -11,12 +11,17 @@ import { firstValueFrom } from 'rxjs';
 import { normalizeAxiosError } from 'src/common/utils/axios-error.util';
 import { KAFKA_TOPICS } from 'src/constants/kafka.constants';
 
+interface ResetNotification {
+  email: string;
+  resetPasswordToken: string;
+}
+
 @Injectable()
 export class KafkaProducerClient implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject('KAFKA_PRODUCER_SERVICE') private readonly kafkaClient: ClientKafka,
     private readonly logger: Logger,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
   ) {}
 
   async onModuleInit() {
@@ -52,15 +57,14 @@ export class KafkaProducerClient implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async publishNotification(notification) {
-
+  async publishNotification(notification: ResetNotification) {
     const resetLink = this.buildResetLink(notification.resetPasswordToken);
     const payload = {
       email: notification.email,
-      resetLink
-    }
-  
-    const eventPayload = this.buildEventPayload(payload)
+      resetLink,
+    };
+
+    const eventPayload = this.buildEventPayload(payload);
     const topic = KAFKA_TOPICS.PUBLISH_MAIL;
     try {
       await firstValueFrom(
@@ -79,7 +83,10 @@ export class KafkaProducerClient implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private buildEventPayload(notification) {
+  private buildEventPayload(notification: {
+    email: string;
+    resetLink: string;
+  }) {
     return {
       notificationId: `notification-${Date.now()}`,
       notification,
@@ -87,14 +94,12 @@ export class KafkaProducerClient implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private buildResetLink(resetPasswordToken: any) {
-    // const serviceHost = this.configService.getOrThrow('SERVICE_HOST');
-    // const servicePort = this.configService.getOrThrow('SERVICE_PORT');
-    // return 'http://'+serviceHost+':'+servicePort+"/auth/reset-password?resetToken="+resetPasswordToken;
-    return 'http://'+"localhost"+"/auth/reset-password?resetToken="+resetPasswordToken;
-  
+  private buildResetLink(resetPasswordToken: string): string {
+    return (
+      'http://' +
+      'localhost' +
+      '/auth/reset-password?resetToken=' +
+      resetPasswordToken
+    );
   }
 }
-
-
-

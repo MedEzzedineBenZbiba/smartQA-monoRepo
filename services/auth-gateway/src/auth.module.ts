@@ -1,6 +1,6 @@
 import { Logger, Module } from '@nestjs/common';
 import { AuthController } from './auth.controller';
-import { JwtModule, JwtService } from '@nestjs/jwt';
+import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ConsulClient } from './clients/consul.client';
 import { HttpModule } from '@nestjs/axios';
@@ -10,7 +10,6 @@ import { AuthService } from './auth.service';
 import { JWT_RESET_PASSWORD_EXPIRY } from './constants/auth.constants';
 import { UserServiceClient } from './clients/user-service.client';
 import { KeyclockClient } from './clients/keyclock.client';
-
 
 @Module({
   imports: [
@@ -27,13 +26,13 @@ import { KeyclockClient } from './clients/keyclock.client';
     ClientsModule.registerAsync([
       {
         name: 'KAFKA_PRODUCER_SERVICE', // Injection token for the Kafka client
-        inject: [ConfigService], 
+        inject: [ConfigService],
         useFactory: (configService: ConfigService) => ({
           transport: Transport.KAFKA,
           options: {
             client: {
               clientId: configService.getOrThrow('KAFKA_CLIENT_ID'),
-              brokers: [configService.getOrThrow('KAFKA_BROKER')] 
+              brokers: [configService.getOrThrow('KAFKA_BROKER')],
             },
             producer: {
               allowAutoTopicCreation: true, // Convenient for development
@@ -45,14 +44,19 @@ import { KeyclockClient } from './clients/keyclock.client';
             },
           },
         }),
-       
       },
     ]),
-    HttpModule
+    HttpModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, ConsulClient, KafkaProducerClient,UserServiceClient, Logger, KeyclockClient],
-  exports: []
-
+  providers: [
+    AuthService,
+    ConsulClient,
+    KafkaProducerClient,
+    UserServiceClient,
+    Logger,
+    KeyclockClient,
+  ],
+  exports: [],
 })
 export class AuthModule {}

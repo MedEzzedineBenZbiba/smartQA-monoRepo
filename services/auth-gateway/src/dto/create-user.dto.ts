@@ -13,7 +13,7 @@ export class CreateUserDto {
       minLowercase: 1,
       minUppercase: 1,
       minNumbers: 1,
-      minSymbols: 0
+      minSymbols: 0,
     },
     {
       message:
@@ -21,10 +21,9 @@ export class CreateUserDto {
     },
   )
   password: string;
-  
+
   @IsEmail()
   email: string;
 
   role: UserRole;
-  
 }

@@ -1,8 +1,8 @@
 import axios from "axios";
-import { getAccessToken } from "@/lib/getAccessToken.client";
+import { getAccessTokenClient } from "@/lib/getAccessToken.client";
 
-export async function apiGet<T = any>(url: string) {
-  const access_token = await getAccessToken();
+export async function apiGet<T = unknown>(url: string) {
+  const access_token = await getAccessTokenClient();
 
   return axios.get<T>(url, {
     headers: {

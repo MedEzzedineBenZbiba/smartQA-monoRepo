@@ -1,10 +1,11 @@
-import { employee, DashboardStats, Employee } from "@/types/employee.type";
+import { DashboardStats, Employee } from "@/types/employee.type";
+import { SessionData } from "@/types/sessionData.type";
 import axios from "axios";
 import https from "https";
-import { jwtDecode } from "jwt-decode";
+import { jwtDecode, JwtPayload } from "jwt-decode";
 
 export type PaginatedUsers = {
-  data: employee[];
+  data: Employee[];
   total: number;
   totalPages: number;
 };
@@ -41,8 +42,9 @@ export async function getUsers(
       },
     );
     return response.data;
-  } catch (error: any) {
-    console.error("Error fetching users:", error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Error fetching users:", message);
     return undefined;
   }
 }
@@ -53,8 +55,9 @@ export async function getDashboardStats(): Promise<DashboardStats | undefined> {
       "/users/stats/dashboard",
     );
     return response.data;
-  } catch (error: any) {
-    console.error("Error fetching dashboard stats:", error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Error fetching dashboard stats:", message);
     return undefined;
   }
 }
@@ -67,20 +70,22 @@ export async function getGenderStats(): Promise<
       "/users/stats/gender",
     );
     return response.data;
-  } catch (error: any) {
-    console.error("Error fetching gender stats:", error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Error fetching gender stats:", message);
     return undefined;
   }
 }
 
-export async function getRecentHires(): Promise<employee[] | undefined> {
+export async function getRecentHires(): Promise<Employee[] | undefined> {
   try {
-    const response = await axiosInstance.get<employee[]>(
+    const response = await axiosInstance.get<Employee[]>(
       "/users/stats/recent-hires",
     );
     return response.data;
-  } catch (error: any) {
-    console.error("Error fetching recent hires:", error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Error fetching recent hires:", message);
     return undefined;
   }
 }
@@ -88,7 +93,7 @@ export async function getRecentHires(): Promise<employee[] | undefined> {
 export async function getAuthentificatedUser(
   sessionData: SessionData,
 ): Promise<Employee | null> {
-  const decoded = jwtDecode<any>(sessionData.access_token);
+  const decoded = jwtDecode<JwtPayload>(sessionData.access_token);
   const id = decoded.sub;
 
   try {
@@ -97,8 +102,9 @@ export async function getAuthentificatedUser(
     );
 
     return response.data;
-  } catch (error) {
-    console.error("Error fetching data:", error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Error fetching data:", message);
     return null;
   }
 }

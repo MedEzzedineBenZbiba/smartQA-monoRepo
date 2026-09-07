@@ -1,8 +1,4 @@
-import {
-  IsString,
-  IsStrongPassword,
-  Length,
-} from 'class-validator';
+import { IsString, IsStrongPassword, Length } from 'class-validator';
 
 export class UpdatePasswordDto {
   @IsString()

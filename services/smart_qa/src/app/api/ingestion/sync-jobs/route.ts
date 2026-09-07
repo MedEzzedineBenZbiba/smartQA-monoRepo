@@ -4,10 +4,14 @@ import { decrypt } from "@/lib/encryptSession";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8002";
 
+interface DecryptedSession {
+  access_token?: string;
+}
+
 async function getToken() {
   const session = (await cookies()).get("session")?.value ?? null;
   if (!session) return null;
-  const decrypted = (await decrypt(session)) as any;
+  const decrypted = (await decrypt(session)) as DecryptedSession;
   return decrypted?.access_token ?? null;
 }
 

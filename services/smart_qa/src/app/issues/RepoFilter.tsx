@@ -57,10 +57,12 @@ export function RepoFilter({
     [token],
   );
 
-  // Load first page the first time the dropdown opens
+  // Load first page the first time the dropdown opens.
+  // Deferred to a microtask so the setState calls inside fetchRepos don't
+  // run synchronously in the effect body.
   useEffect(() => {
     if (isOpen && !hasLoadedOnce) {
-      fetchRepos("", 1, false);
+      queueMicrotask(() => fetchRepos("", 1, false));
     }
   }, [isOpen, hasLoadedOnce, fetchRepos]);
 

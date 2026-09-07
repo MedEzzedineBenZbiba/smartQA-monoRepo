@@ -1,7 +1,4 @@
-import { IsEmail, IsString, IsStrongPassword, Length } from 'class-validator';
-import { UserRole } from 'src/enum/userRole.enum';
-import { CreateUserDto } from './create-user.dto';
-import { PickType } from '@nestjs/swagger';
+import { IsString, IsStrongPassword, Length } from 'class-validator';
 
 export class ChangeForgettenPassowrdDTO {
   @IsString()
@@ -15,8 +12,9 @@ export class ChangeForgettenPassowrdDTO {
       minSymbols: 0,
     },
     {
-      message: 'password should contain at least one lowercase letter, one uppercase letter and one number',
-    }
+      message:
+        'password should contain at least one lowercase letter, one uppercase letter and one number',
+    },
   )
   newPassword!: string;
 }

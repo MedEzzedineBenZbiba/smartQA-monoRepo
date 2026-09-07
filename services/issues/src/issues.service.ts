@@ -6,12 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Issue } from './issue.schema';
-import { Model } from 'mongoose';
+import { Model, PipelineStage, Types } from 'mongoose';
 import { normalizeError } from './common/util/normalizedError.util';
 import { ConsulClient } from './clients/consul.client';
 import { firstValueFrom } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
-import { Types } from 'mongoose';
 import { ClusterResultDto } from './dto/cluster-result.dto';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -23,9 +22,12 @@ import {
   ClusterIssue,
   ClusterRepoItem,
   ClusterSummary,
-  ClusterWithIssues,
 } from './types/cluster.interface';
-import { ChatIssuesDto, ChatIssuesResult } from './dto/chat-issues.dto';
+import {
+  ChatCitation,
+  ChatIssuesDto,
+  ChatIssuesResult,
+} from './dto/chat-issues.dto';
 import { AgingBucket, QADashboardStats } from './types/qa-dashboard.interface';
 import { DuplicateGroup } from './types/duplicate.interface';
 import { extractRepo } from './common/util/extract-repo.util';
@@ -57,6 +59,183 @@ export interface IssueDashboardStats {
   }[];
 }
 
+// ── Shared typed shapes ───────────────────────────────────────────────────
+
+interface DecodedJwtPayload {
+  sub: string;
+  realm_access?: { roles?: string[] };
+  [key: string]: unknown;
+}
+
+export interface CreateIssueDto {
+  issueId: string | number;
+  url: string;
+  userId: string;
+  state?: string;
+  updated_at?: Date | string | null;
+  title?: string;
+  body?: string | null;
+  created_at?: Date | string | null;
+  embedding?: number[] | null;
+  cluster_id?: number | null;
+  cluster_label?: string | null;
+  repo?: string | null;
+}
+
+export interface KafkaIssuePayload {
+  issue: {
+    id: string | number;
+    number?: number;
+    pull_request?: unknown;
+    state: string;
+    updated_at: Date | string;
+    title: string;
+    body?: string | null;
+    created_at: Date | string;
+    userId: string;
+    url: string;
+  };
+}
+
+interface EmbedApiResponse {
+  embedding: number[];
+}
+
+interface RepoAggRow {
+  _id: string;
+  count: number;
+}
+
+interface StateCountRow {
+  _id: string;
+  count: number;
+}
+
+interface QualityFacetRow {
+  poorlyDescribed: number;
+  noise: number;
+  clustered: number;
+}
+
+interface ClusterDistAggRow {
+  _id: { cluster_id: number; cluster_label: string };
+  counts: { state: string; count: number }[];
+}
+
+interface RecentIssueLean {
+  _id: Types.ObjectId;
+  title: string;
+  state: string;
+  cluster_id?: number | null;
+  cluster_label?: string | null;
+  created_at?: Date | null;
+  embedding?: number[] | null;
+}
+
+interface VectorSearchHit {
+  _id: Types.ObjectId;
+  issueId: string;
+  title: string;
+  body?: string | null;
+  state: string;
+  cluster_id?: number | null;
+  cluster_label?: string | null;
+  created_at?: Date | string | null;
+  updated_at?: Date | string | null;
+  url: string;
+  embedding?: number[] | null;
+  similarity_score: number;
+}
+
+interface TextSearchLean {
+  _id: Types.ObjectId;
+  issueId: string;
+  title: string;
+  body?: string | null;
+  state: string;
+  cluster_id?: number | null;
+  cluster_label?: string | null;
+  created_at?: Date | string | null;
+  updated_at?: Date | string | null;
+  url: string;
+  embedding?: number[] | null;
+}
+
+interface SearchIndexInfo {
+  name: string;
+  status: string;
+  type: string;
+  latestDefinition?: {
+    fields?: unknown;
+    mappings?: unknown;
+  };
+}
+
+interface ClusterAggRow {
+  _id: number;
+  cluster_label: string;
+  openCount: number;
+  closedCount: number;
+  totalCount: number;
+}
+
+interface ClusterReposAggRow {
+  _id: string;
+  count: number;
+}
+
+interface ClusterIssueLean {
+  _id: Types.ObjectId;
+  issueId: string;
+  title: string;
+  state: string;
+  created_at?: Date | null;
+  url: string;
+}
+
+interface SummarizeApiResponse {
+  summary: string;
+}
+
+interface ChatRagApiResponse {
+  answer: string;
+  citations?: ChatCitation[];
+}
+
+interface QAQualityFacetRow {
+  total: number;
+  poorlyDescribed: number;
+  noise: number;
+  clustered: number;
+  clusteredClosed: number;
+}
+
+interface QualityTrendAggRow {
+  _id: string;
+  poorlyDescribed: number;
+  noise: number;
+}
+
+interface OpenIssueLean {
+  _id: Types.ObjectId;
+  issueId: string;
+  title: string;
+  created_at?: Date | null;
+}
+
+interface DuplicateIssueLean {
+  _id: Types.ObjectId;
+  issueId: string;
+  title: string;
+  state: string;
+  url: string;
+  created_at?: Date | null;
+  cluster_id?: number | null;
+  cluster_label?: string | null;
+  embedding?: number[] | null;
+  repo?: string | null;
+}
+
 @Injectable()
 export class IssuesService {
   constructor(
@@ -67,25 +246,27 @@ export class IssuesService {
     private jwtService: JwtService,
   ) {}
 
-  // TODO: Create createIssueDto class (instead of any)
-  async createAndOverideOldOne(createIssueDto: any): Promise<Issue> {
+  async createAndOverideOldOne(createIssueDto: CreateIssueDto): Promise<Issue> {
     try {
-      return await this.issueModel.findOneAndUpdate(
-        {
-          issueId: createIssueDto.issueId,
-          url: createIssueDto.url,
-          userId: createIssueDto.userId,
-        },
+      const filter: Record<string, unknown> = {
+        issueId: createIssueDto.issueId,
+        url: createIssueDto.url,
+        userId: createIssueDto.userId,
+      };
+
+      const updated = await this.issueModel.findOneAndUpdate(
+        filter,
         { $set: createIssueDto },
         { upsert: true, new: true },
       );
+      return updated as unknown as Issue;
     } catch (error) {
       this.logger.error(normalizeError(error));
       throw new InternalServerErrorException('Failed to create issue');
     }
   }
 
-  async createFromKafkaPayload(payload: any) {
+  async createFromKafkaPayload(payload: KafkaIssuePayload): Promise<void> {
     const { issue } = payload;
     if (issue?.pull_request) {
       this.logger.log(`Skipping pull request #${issue.number}`);
@@ -125,7 +306,7 @@ export class IssuesService {
     );
     const embeddingUrl = vectorServiceInstanceUrl + '/api/embed';
     const response = await firstValueFrom(
-      this.httpService.post(
+      this.httpService.post<EmbedApiResponse>(
         embeddingUrl,
         {
           issue_title: title,
@@ -137,10 +318,9 @@ export class IssuesService {
         },
       ),
     );
-    const result = response.data;
-    const embedding = result.embedding;
+    const embedding = response.data.embedding;
 
-    const cleanIssue = {
+    const cleanIssue: CreateIssueDto = {
       issueId: issue.id,
       state,
       updated_at,
@@ -163,14 +343,14 @@ export class IssuesService {
     userId?: string,
     search?: string,
     state?: 'open' | 'closed' | 'all',
-    repos?: string[], // ← added
+    repos?: string[],
   ): Promise<{ data: Issue[]; total: number }> {
     try {
-      const filter: Record<string, any> = {};
+      const filter: Record<string, unknown> = {};
 
       if (userId) filter.userId = userId;
       if (state && state !== 'all') filter.state = state;
-      if (repos && repos.length > 0) filter.repo = { $in: repos }; // ← added
+      if (repos && repos.length > 0) filter.repo = { $in: repos };
 
       if (search?.trim()) {
         filter.$or = [
@@ -190,7 +370,7 @@ export class IssuesService {
         this.issueModel.countDocuments(filter),
       ]);
 
-      return { data, total };
+      return { data: data as Issue[], total };
     } catch (error) {
       this.logger.error(normalizeError(error));
       throw new InternalServerErrorException('Failed to fetch issues');
@@ -203,9 +383,9 @@ export class IssuesService {
     limit: number,
   ): Promise<{ data: { repo: string; count: number }[]; total: number }> {
     try {
-      const matchStage: Record<string, any> = { repo: { $ne: null } };
+      const matchStage: Record<string, unknown> = { repo: { $ne: null } };
 
-      const pipeline: any[] = [
+      const pipeline: PipelineStage[] = [
         { $match: matchStage },
         { $group: { _id: '$repo', count: { $sum: 1 } } },
       ];
@@ -226,8 +406,12 @@ export class IssuesService {
         },
       );
 
-      const [result] = await this.issueModel.aggregate(pipeline);
-      const data = (result?.data ?? []).map((r: any) => ({
+      const [result] = await this.issueModel.aggregate<{
+        data: RepoAggRow[];
+        totalCount: { count: number }[];
+      }>(pipeline);
+
+      const data = (result?.data ?? []).map((r) => ({
         repo: r._id,
         count: r.count,
       }));
@@ -250,18 +434,20 @@ export class IssuesService {
    *   clustered       → embedding exists AND cluster_id >= 0
    */
   async getDashboardStats(token: string): Promise<IssueDashboardStats> {
-    const payload = this.jwtService.decode(token) as any;
+    const payload = this.jwtService.decode<DecodedJwtPayload>(token);
     const authUserId = payload.sub;
 
     try {
       const userId = { userId: authUserId };
 
       // ── 1. Single aggregation for all scalar counts ──────────────────────
-      const [countsResult] = await this.issueModel.aggregate([
+      const [countsResult] = await this.issueModel.aggregate<{
+        totals: StateCountRow[];
+        quality: QualityFacetRow[];
+      }>([
         { $match: userId },
         {
           $facet: {
-            // Total + open/closed split
             totals: [
               {
                 $group: {
@@ -270,8 +456,6 @@ export class IssuesService {
                 },
               },
             ],
-
-            // Quality buckets
             quality: [
               {
                 $group: {
@@ -343,76 +527,75 @@ export class IssuesService {
       ]);
 
       // Parse totals facet
-      const totalsArr: { _id: string; count: number }[] =
-        countsResult?.totals ?? [];
+      const totalsArr: StateCountRow[] = countsResult?.totals ?? [];
       const openCount = totalsArr.find((t) => t._id === 'open')?.count ?? 0;
       const closedCount = totalsArr.find((t) => t._id === 'closed')?.count ?? 0;
       const total = openCount + closedCount;
 
       // Parse quality facet
-      const quality = countsResult?.quality?.[0] ?? {
+      const quality: QualityFacetRow = countsResult?.quality?.[0] ?? {
         poorlyDescribed: 0,
         noise: 0,
         clustered: 0,
       };
 
       // ── 2. Cluster distribution (open issues per cluster label) ───────────
-      const clusterDistributionRaw = await this.issueModel.aggregate([
-        {
-          $match: {
-            ...userId,
-            embedding: { $ne: null },
-            'embedding.0': { $exists: true },
-            cluster_id: { $gte: 0 },
-            cluster_label: { $ne: null },
-          },
-        },
-        {
-          $group: {
-            _id: {
-              cluster_id: '$cluster_id',
-              cluster_label: '$cluster_label',
-              state: '$state',
-            },
-            count: { $sum: 1 },
-          },
-        },
-        {
-          $group: {
-            _id: {
-              cluster_id: '$_id.cluster_id',
-              cluster_label: '$_id.cluster_label',
-            },
-            counts: {
-              $push: { state: '$_id.state', count: '$count' },
+      const clusterDistributionRaw =
+        await this.issueModel.aggregate<ClusterDistAggRow>([
+          {
+            $match: {
+              ...userId,
+              embedding: { $ne: null },
+              'embedding.0': { $exists: true },
+              cluster_id: { $gte: 0 },
+              cluster_label: { $ne: null },
             },
           },
-        },
-        { $sort: { '_id.cluster_id': 1 } },
-      ]);
+          {
+            $group: {
+              _id: {
+                cluster_id: '$cluster_id',
+                cluster_label: '$cluster_label',
+                state: '$state',
+              },
+              count: { $sum: 1 },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                cluster_id: '$_id.cluster_id',
+                cluster_label: '$_id.cluster_label',
+              },
+              counts: {
+                $push: { state: '$_id.state', count: '$count' },
+              },
+            },
+          },
+          { $sort: { '_id.cluster_id': 1 } },
+        ]);
 
       const clusterDistribution = clusterDistributionRaw.map((c) => {
-        const openC = c.counts.find((s: any) => s.state === 'open')?.count ?? 0;
-        const closedC =
-          c.counts.find((s: any) => s.state === 'closed')?.count ?? 0;
+        const openC = c.counts.find((s) => s.state === 'open')?.count ?? 0;
+        const closedC = c.counts.find((s) => s.state === 'closed')?.count ?? 0;
         return {
-          cluster_id: c._id.cluster_id as number,
-          cluster_label: c._id.cluster_label as string,
+          cluster_id: c._id.cluster_id,
+          cluster_label: c._id.cluster_label,
           openCount: openC,
           closedCount: closedC,
         };
       });
 
       // ── 3. Recent issues list (last 20, all categories) ──────────────────
-      const recentRaw = await this.issueModel
+      const recentRaw = (await this.issueModel
         .find(userId)
         .select('_id title state cluster_id cluster_label created_at embedding')
         .sort({ created_at: -1 })
         .limit(20)
         .lean()
-        .exec();
+        .exec()) as unknown as RecentIssueLean[];
 
-      const recentIssues = recentRaw.map((i: any) => {
+      const recentIssues = recentRaw.map((i) => {
         const hasEmbedding =
           i.embedding !== null &&
           Array.isArray(i.embedding) &&
@@ -451,14 +634,18 @@ export class IssuesService {
     total_chunks: number;
   }> {
     try {
-      const issues = await this.issueModel
+      const issues = (await this.issueModel
         .find({
           embedding: { $exists: true, $ne: null },
           'embedding.0': { $exists: true },
         })
         .select('_id title embedding')
         .lean()
-        .exec();
+        .exec()) as unknown as {
+        _id: Types.ObjectId;
+        title: string;
+        embedding: number[];
+      }[];
 
       if (issues.length < 2) {
         throw new InternalServerErrorException(
@@ -478,7 +665,7 @@ export class IssuesService {
       );
 
       const initResponse = await firstValueFrom(
-        this.httpService.post(
+        this.httpService.post<{ job_id: string }>(
           `${vectorServiceUrl}/api/cluster/init`,
           { total_issues: totalIssues, total_chunks: totalChunks },
           { timeout: 30000 },
@@ -493,17 +680,11 @@ export class IssuesService {
 
         const chunkPayload = {
           chunk_index: i,
-          issues: chunk.map(
-            (issue: {
-              _id: { toString: () => any };
-              title: any;
-              embedding: any;
-            }) => ({
-              id: issue._id.toString(),
-              issue_title: issue.title,
-              embedding: issue.embedding,
-            }),
-          ),
+          issues: chunk.map((issue) => ({
+            id: issue._id.toString(),
+            issue_title: issue.title,
+            embedding: issue.embedding,
+          })),
         };
 
         await firstValueFrom(
@@ -518,12 +699,13 @@ export class IssuesService {
       }
 
       return { job_id, total_issues: totalIssues, total_chunks: totalChunks };
-    } catch (error: any) {
+    } catch (error) {
       this.logger.error(normalizeError(error));
       if (error instanceof HttpException) throw error;
-      if (error?.status) throw new HttpException(error.message, error.status);
+      const err = error as { status?: number; message?: string };
+      if (err?.status) throw new HttpException(err.message ?? '', err.status);
       throw new InternalServerErrorException(
-        error?.message || 'Failed to trigger clustering',
+        err?.message || 'Failed to trigger clustering',
       );
     }
   }
@@ -562,12 +744,10 @@ export class IssuesService {
     const SIMILARITY_THRESHOLD = 0.55;
     const skip = (page - 1) * limit;
 
-    // ── Base filter (state + user scope) ──────────────────────────────────
-    const baseFilter: Record<string, any> = {};
+    const baseFilter: Record<string, unknown> = {};
     if (state && state !== 'all') baseFilter.state = state;
 
     try {
-      // ── 1. Get query embedding from FastAPI ──────────────────────────────
       let queryEmbedding: number[] | null = null;
       let mode: 'hybrid' | 'text-only' = 'text-only';
 
@@ -576,7 +756,7 @@ export class IssuesService {
           'vector-microservice',
         );
         const embedResponse = await firstValueFrom(
-          this.httpService.post(
+          this.httpService.post<EmbedApiResponse>(
             `${vectorServiceUrl}/api/search/embed`,
             { query },
             { timeout: 10000 },
@@ -590,21 +770,23 @@ export class IssuesService {
         );
       }
 
-      // ── 2. Vector search branch (issues WITH embeddings) ─────────────────
-      let vectorResults: any[] = [];
+      let vectorResults: VectorSearchHit[] = [];
 
       if (queryEmbedding) {
-        const vectorFilter: Record<string, any> = {};
+        const vectorFilter: Record<string, unknown> = {};
         if (state && state !== 'all') vectorFilter.state = state;
 
-        vectorResults = await this.issueModel.aggregate([
+        // $vectorSearch is an Atlas-only stage that mongoose's PipelineStage
+        // union doesn't model, so this pipeline stays loosely typed.
+
+        vectorResults = await this.issueModel.aggregate<VectorSearchHit>([
           {
             $vectorSearch: {
               index: 'vector_index',
               path: 'embedding',
               queryVector: queryEmbedding,
-              numCandidates: limit * 10, // cast wider net before filtering
-              limit: limit * 2, // get extra before threshold cut
+              numCandidates: limit * 10,
+              limit: limit * 2,
               filter: vectorFilter,
             },
           },
@@ -614,7 +796,6 @@ export class IssuesService {
             },
           },
           {
-            // Apply 0.65 threshold
             $match: {
               similarity_score: { $gte: SIMILARITY_THRESHOLD },
             },
@@ -635,17 +816,14 @@ export class IssuesService {
               similarity_score: 1,
             },
           },
-        ]);
+        ] as PipelineStage[]);
       }
 
-      // ── 3. Text search branch (poorly described: embedding = null) ────────
       const vectorMatchedIds = new Set(
         vectorResults.map((r) => r._id.toString()),
       );
 
-      // Text search covers: (a) poorly described issues (no embedding)
-      // and (b) any issues the vector search missed that keyword-match
-      const textFilter: Record<string, any> = {
+      const textFilter: Record<string, unknown> = {
         ...baseFilter,
         $or: [
           { title: { $regex: query.trim(), $options: 'i' } },
@@ -653,7 +831,8 @@ export class IssuesService {
         ],
       };
 
-      const textResults = await this.issueModel
+      const textResults = (await this.issueModel
+
         .find(textFilter)
         .select(
           '_id issueId title body state cluster_id cluster_label created_at updated_at url embedding',
@@ -661,298 +840,8 @@ export class IssuesService {
         .sort({ created_at: -1 })
         .limit(limit * 2)
         .lean()
-        .exec();
+        .exec()) as unknown as TextSearchLean[];
 
-      // ── 4. Merge: vector results first, then text-only additions ──────────
-      const merged: SearchedIssue[] = [];
-
-      // Add vector results (already scored + filtered)
-      for (const r of vectorResults) {
-        const hasEmbedding =
-          r.embedding !== null &&
-          Array.isArray(r.embedding) &&
-          r.embedding.length > 0;
-
-        merged.push({
-          _id: r._id.toString(),
-          issueId: r.issueId,
-          title: r.title,
-          body: r.body,
-          state: r.state,
-          cluster_id: r.cluster_id ?? null,
-          cluster_label: r.cluster_label ?? null,
-          created_at: r.created_at ?? null,
-          updated_at: r.updated_at ?? null,
-          url: r.url,
-          similarity_score: Math.round(r.similarity_score * 100) / 100,
-          isPoorlyDescribed: !hasEmbedding,
-          isNoise: hasEmbedding && r.cluster_id === -1,
-          match_type: 'vector',
-        });
-      }
-
-      // Add text-only results not already in vector results
-      for (const r of textResults) {
-        if (vectorMatchedIds.has(r._id.toString())) continue; // already included
-
-        const hasEmbedding =
-          (r as any).embedding !== null &&
-          Array.isArray((r as any).embedding) &&
-          (r as any).embedding.length > 0;
-
-        merged.push({
-          _id: r._id.toString(),
-          issueId: r.issueId,
-          title: r.title,
-          body: r.body ?? '',
-          state: r.state,
-          cluster_id: r.cluster_id ?? null,
-          cluster_label: r.cluster_label ?? null,
-          created_at: r.created_at
-            ? new Date(r.created_at).toISOString()
-            : null,
-          updated_at: r.updated_at
-            ? new Date(r.updated_at).toISOString()
-            : null,
-          url: r.url,
-          similarity_score: null, // no vector score for text-only
-          isPoorlyDescribed: !hasEmbedding,
-          isNoise: hasEmbedding && r.cluster_id === -1,
-          match_type: 'text',
-        });
-      }
-
-      // ── 5. Paginate the merged list ────────────────────────────────────────
-      const total = merged.length;
-      const paginated = merged.slice(skip, skip + limit);
-
-      return { data: paginated, total, query, mode };
-    } catch (error) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException('Semantic search failed');
-    }
-  }
-
-  async semanticSearchQAChat(
-    dto: SearchIssuesDto,
-  ): Promise<SemanticSearchResult> {
-    const { query, state, limit = 20, page = 1 } = dto;
-    const SIMILARITY_THRESHOLD = 0.55;
-    const skip = (page - 1) * limit;
-    const baseFilter: Record<string, any> = {};
-    if (state && state !== 'all') baseFilter.state = state;
-
-    try {
-      const indexes = await this.issueModel.collection
-        .listSearchIndexes()
-        .toArray();
-      this.logger.log(
-        `Search indexes: ${JSON.stringify(
-          indexes.map((idx: any) => ({
-            name: idx.name,
-            status: idx.status,
-            type: idx.type,
-            fields:
-              idx.latestDefinition?.fields ?? idx.latestDefinition?.mappings,
-          })),
-        )}`,
-      );
-    } catch (idxErr) {
-      this.logger.warn(`Could not list search indexes: ${idxErr}`);
-    }
-
-    // ── TEMPORARY DIAGNOSTICS — remove after fix ──────────────────────────
-    const totalDocs = await this.issueModel.countDocuments();
-    const sampleDocs = await this.issueModel
-      .find()
-      .limit(2)
-      .select('_id title userId embedding cluster_id')
-      .lean();
-    this.logger.log(
-      `Collection: "${this.issueModel.collection.name}" | Total docs: ${totalDocs}`,
-    );
-    this.logger.log(
-      `Sample docs: ${JSON.stringify(
-        sampleDocs.map((d) => ({
-          id: d._id,
-          title: d.title,
-          userId: (d as any).userId,
-          hasEmbedding:
-            Array.isArray((d as any).embedding) &&
-            (d as any).embedding.length > 0,
-          cluster_id: (d as any).cluster_id,
-        })),
-      )}`,
-    );
-
-    // Quick text search with no filter to verify collection is reachable
-    const rawTextTest = await this.issueModel
-      .find({ title: { $regex: 'login', $options: 'i' } })
-      .limit(3)
-      .select('_id title')
-      .lean();
-    this.logger.log(
-      `Raw text test (login): ${rawTextTest.length} results → ${JSON.stringify(rawTextTest.map((d) => d.title))}`,
-    );
-    // ─────────────────────────────────────────────────────────────────────
-
-    try {
-      let queryEmbedding: number[] | null = null;
-      let mode: 'hybrid' | 'text-only' = 'text-only';
-
-      try {
-        const vectorServiceUrl = await this.consulClient.discoverService(
-          'vector-microservice',
-        );
-        const embedResponse = await firstValueFrom(
-          this.httpService.post(
-            `${vectorServiceUrl}/api/search/embed`,
-            { query },
-            { timeout: 10000 },
-          ),
-        );
-        queryEmbedding = embedResponse.data.embedding;
-        mode = 'hybrid';
-      } catch (embedErr) {
-        this.logger.warn(
-          `Failed to get query embedding, falling back to text search: ${embedErr}`,
-        );
-      }
-
-      let vectorResults: any[] = [];
-
-      if (queryEmbedding) {
-        const vectorSearchStage: {
-          index: string;
-          path: string;
-          queryVector: number[];
-          numCandidates: number;
-          limit: number;
-        } = {
-          index: 'vector_index',
-          path: 'embedding',
-          queryVector: queryEmbedding,
-          numCandidates: Math.max(limit * 20, 400),
-          limit: limit * 4,
-        };
-
-        try {
-          // ── RAW results BEFORE threshold — to see what scores we're getting ──
-          const rawVectorResults = await this.issueModel.aggregate([
-            { $vectorSearch: vectorSearchStage },
-            {
-              $addFields: {
-                similarity_score: { $meta: 'vectorSearchScore' },
-              },
-            },
-            {
-              $project: {
-                _id: 1,
-                title: 1,
-                similarity_score: 1,
-              },
-            },
-          ]);
-
-          this.logger.log(
-            `RAW vector results (no threshold): ${rawVectorResults.length}`,
-          );
-          this.logger.log(
-            `Top 5 scores: ${JSON.stringify(
-              rawVectorResults.slice(0, 5).map((r) => ({
-                title: r.title,
-                score: r.similarity_score,
-              })),
-            )}`,
-          );
-        } catch (vectorErr) {
-          this.logger.error(`Vector search error: ${vectorErr}`);
-        }
-      }
-
-      if (queryEmbedding) {
-        // ── Build $vectorSearch stage with proper typing ──────────────────
-        const vectorSearchStage: {
-          index: string;
-          path: string;
-          queryVector: number[];
-          numCandidates: number;
-          limit: number;
-          filter?: Record<string, any>;
-        } = {
-          index: 'vector_index',
-          path: 'embedding',
-          queryVector: queryEmbedding,
-          numCandidates: Math.max(limit * 20, 200),
-          limit: limit * 3,
-        };
-
-        // Only add filter if we actually have one — empty {} breaks Atlas
-        if (state && state !== 'all') {
-          vectorSearchStage.filter = { state };
-        }
-
-        vectorResults = await this.issueModel.aggregate([
-          { $vectorSearch: vectorSearchStage },
-          {
-            $addFields: {
-              similarity_score: { $meta: 'vectorSearchScore' },
-            },
-          },
-          {
-            $match: {
-              similarity_score: { $gte: SIMILARITY_THRESHOLD },
-            },
-          },
-          {
-            $project: {
-              _id: 1,
-              issueId: 1,
-              title: 1,
-              body: 1,
-              state: 1,
-              cluster_id: 1,
-              cluster_label: 1,
-              created_at: 1,
-              updated_at: 1,
-              url: 1,
-              embedding: 1,
-              similarity_score: 1,
-            },
-          },
-        ]);
-
-        this.logger.log(
-          `RAG vector search: ${vectorResults.length} results above threshold ${SIMILARITY_THRESHOLD}`,
-        );
-      }
-
-      // ── Text search fallback ──────────────────────────────────────────────
-      const vectorMatchedIds = new Set(
-        vectorResults.map((r) => r._id.toString()),
-      );
-
-      const textFilter: Record<string, any> = {
-        ...baseFilter,
-        $or: [
-          { title: { $regex: query.trim(), $options: 'i' } },
-          { body: { $regex: query.trim(), $options: 'i' } },
-        ],
-      };
-
-      const textResults = await this.issueModel
-        .find(textFilter)
-        .select(
-          '_id issueId title body state cluster_id cluster_label created_at updated_at url embedding',
-        )
-        .sort({ created_at: -1 })
-        .limit(limit * 2)
-        .lean()
-        .exec();
-
-      this.logger.log(`RAG text search: ${textResults.length} results`);
-
-      // ── Merge ─────────────────────────────────────────────────────────────
       const merged: SearchedIssue[] = [];
 
       for (const r of vectorResults) {
@@ -983,9 +872,9 @@ export class IssuesService {
         if (vectorMatchedIds.has(r._id.toString())) continue;
 
         const hasEmbedding =
-          (r as any).embedding !== null &&
-          Array.isArray((r as any).embedding) &&
-          (r as any).embedding.length > 0;
+          r.embedding !== null &&
+          Array.isArray(r.embedding) &&
+          r.embedding.length > 0;
 
         merged.push({
           _id: r._id.toString(),
@@ -1019,10 +908,205 @@ export class IssuesService {
     }
   }
 
-  // GET /issues/clusters
-  // Returns all clusters (cluster_id >= 0) with their issues and open/closed counts.
-  // Noise (cluster_id = -1) and poorly-described (embedding = null) are excluded.
-  // ─────────────────────────────────────────────────────────────────────────────
+  async semanticSearchQAChat(
+    dto: SearchIssuesDto,
+  ): Promise<SemanticSearchResult> {
+    const { query, state, limit = 20, page = 1 } = dto;
+    const SIMILARITY_THRESHOLD = 0.55;
+    const skip = (page - 1) * limit;
+    const baseFilter: Record<string, unknown> = {};
+    if (state && state !== 'all') baseFilter.state = state;
+
+    try {
+      const indexes = (await this.issueModel.collection
+        .listSearchIndexes()
+        .toArray()) as unknown as SearchIndexInfo[];
+      this.logger.log(
+        `Search indexes: ${JSON.stringify(
+          indexes.map((idx) => ({
+            name: idx.name,
+            status: idx.status,
+            type: idx.type,
+            fields:
+              idx.latestDefinition?.fields ?? idx.latestDefinition?.mappings,
+          })),
+        )}`,
+      );
+    } catch (idxErr) {
+      this.logger.warn(`Could not list search indexes: ${idxErr}`);
+    }
+
+    try {
+      let queryEmbedding: number[] | null = null;
+      let mode: 'hybrid' | 'text-only' = 'text-only';
+
+      try {
+        const vectorServiceUrl = await this.consulClient.discoverService(
+          'vector-microservice',
+        );
+        const embedResponse = await firstValueFrom(
+          this.httpService.post<EmbedApiResponse>(
+            `${vectorServiceUrl}/api/search/embed`,
+            { query },
+            { timeout: 10000 },
+          ),
+        );
+        queryEmbedding = embedResponse.data.embedding;
+        mode = 'hybrid';
+      } catch (embedErr) {
+        this.logger.warn(
+          `Failed to get query embedding, falling back to text search: ${embedErr}`,
+        );
+      }
+
+      let vectorResults: VectorSearchHit[] = [];
+
+      if (queryEmbedding) {
+        const vectorSearchStage: {
+          index: string;
+          path: string;
+          queryVector: number[];
+          numCandidates: number;
+          limit: number;
+          filter?: Record<string, unknown>;
+        } = {
+          index: 'vector_index',
+          path: 'embedding',
+          queryVector: queryEmbedding,
+          numCandidates: Math.max(limit * 20, 200),
+          limit: limit * 3,
+        };
+
+        if (state && state !== 'all') {
+          vectorSearchStage.filter = { state };
+        }
+
+        vectorResults = await this.issueModel.aggregate<VectorSearchHit>([
+          { $vectorSearch: vectorSearchStage },
+          {
+            $addFields: {
+              similarity_score: { $meta: 'vectorSearchScore' },
+            },
+          },
+          {
+            $match: {
+              similarity_score: { $gte: SIMILARITY_THRESHOLD },
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+              issueId: 1,
+              title: 1,
+              body: 1,
+              state: 1,
+              cluster_id: 1,
+              cluster_label: 1,
+              created_at: 1,
+              updated_at: 1,
+              url: 1,
+              embedding: 1,
+              similarity_score: 1,
+            },
+          },
+        ] as PipelineStage[]);
+
+        this.logger.log(
+          `RAG vector search: ${vectorResults.length} results above threshold ${SIMILARITY_THRESHOLD}`,
+        );
+      }
+
+      const vectorMatchedIds = new Set(
+        vectorResults.map((r) => r._id.toString()),
+      );
+
+      const textFilter: Record<string, unknown> = {
+        ...baseFilter,
+        $or: [
+          { title: { $regex: query.trim(), $options: 'i' } },
+          { body: { $regex: query.trim(), $options: 'i' } },
+        ],
+      };
+
+      const textResults = (await this.issueModel
+
+        .find(textFilter)
+        .select(
+          '_id issueId title body state cluster_id cluster_label created_at updated_at url embedding',
+        )
+        .sort({ created_at: -1 })
+        .limit(limit * 2)
+        .lean()
+        .exec()) as unknown as TextSearchLean[];
+
+      this.logger.log(`RAG text search: ${textResults.length} results`);
+
+      const merged: SearchedIssue[] = [];
+
+      for (const r of vectorResults) {
+        const hasEmbedding =
+          r.embedding !== null &&
+          Array.isArray(r.embedding) &&
+          r.embedding.length > 0;
+
+        merged.push({
+          _id: r._id.toString(),
+          issueId: r.issueId,
+          title: r.title,
+          body: r.body,
+          state: r.state,
+          cluster_id: r.cluster_id ?? null,
+          cluster_label: r.cluster_label ?? null,
+          created_at: r.created_at ?? null,
+          updated_at: r.updated_at ?? null,
+          url: r.url,
+          similarity_score: Math.round(r.similarity_score * 100) / 100,
+          isPoorlyDescribed: !hasEmbedding,
+          isNoise: hasEmbedding && r.cluster_id === -1,
+          match_type: 'vector',
+        });
+      }
+
+      for (const r of textResults) {
+        if (vectorMatchedIds.has(r._id.toString())) continue;
+
+        const hasEmbedding =
+          r.embedding !== null &&
+          Array.isArray(r.embedding) &&
+          r.embedding.length > 0;
+
+        merged.push({
+          _id: r._id.toString(),
+          issueId: r.issueId,
+          title: r.title,
+          body: r.body ?? '',
+          state: r.state,
+          cluster_id: r.cluster_id ?? null,
+          cluster_label: r.cluster_label ?? null,
+          created_at: r.created_at
+            ? new Date(r.created_at).toISOString()
+            : null,
+          updated_at: r.updated_at
+            ? new Date(r.updated_at).toISOString()
+            : null,
+          url: r.url,
+          similarity_score: null,
+          isPoorlyDescribed: !hasEmbedding,
+          isNoise: hasEmbedding && r.cluster_id === -1,
+          match_type: 'text',
+        });
+      }
+
+      const total = merged.length;
+      const paginated = merged.slice(skip, skip + limit);
+
+      return { data: paginated, total, query, mode };
+    } catch (error) {
+      this.logger.error(normalizeError(error));
+      throw new InternalServerErrorException('Semantic search failed');
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /issues/clusters?page=&limit=6&search=
   // Paginated, searchable, lightweight cluster metadata (no embedded issues).
@@ -1033,19 +1117,19 @@ export class IssuesService {
     limit: number,
     search: string,
   ): Promise<{ clusters: ClusterSummary[]; total: number }> {
-    const payload = this.jwtService.decode(token) as any;
+    const payload = this.jwtService.decode<DecodedJwtPayload>(token);
     const hasQaRole = payload.realm_access?.roles?.includes('QA') ?? false;
     const userId = payload.sub;
 
     try {
-      const matchStage: Record<string, any> = {
+      const matchStage: Record<string, unknown> = {
         cluster_id: { $gte: 0 },
         embedding: { $ne: null },
         cluster_label: { $ne: null },
       };
       if (!hasQaRole) matchStage.userId = userId;
 
-      const pipeline: any[] = [
+      const pipeline: PipelineStage[] = [
         { $match: matchStage },
         {
           $group: {
@@ -1080,8 +1164,12 @@ export class IssuesService {
         },
       );
 
-      const [result] = await this.issueModel.aggregate(pipeline);
-      const clusters: ClusterSummary[] = (result?.data ?? []).map((c: any) => ({
+      const [result] = await this.issueModel.aggregate<{
+        data: ClusterAggRow[];
+        count: { total: number }[];
+      }>(pipeline);
+
+      const clusters: ClusterSummary[] = (result?.data ?? []).map((c) => ({
         cluster_id: c._id,
         cluster_label: c.cluster_label,
         openCount: c.openCount,
@@ -1099,7 +1187,6 @@ export class IssuesService {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /issues/clusters/:cluster_id/repos?page=&limit=8
-  // Distinct repos within a single cluster, with issue counts, paginated.
   // ─────────────────────────────────────────────────────────────────────────────
   async getClusterRepos(
     token: string,
@@ -1107,19 +1194,19 @@ export class IssuesService {
     page: number,
     limit: number,
   ): Promise<{ data: ClusterRepoItem[]; total: number }> {
-    const payload = this.jwtService.decode(token) as any;
+    const payload = this.jwtService.decode<DecodedJwtPayload>(token);
     const hasQaRole = payload.realm_access?.roles?.includes('QA') ?? false;
     const userId = payload.sub;
 
     try {
-      const matchStage: Record<string, any> = {
+      const matchStage: Record<string, unknown> = {
         cluster_id: clusterId,
         embedding: { $ne: null },
         repo: { $ne: null },
       };
       if (!hasQaRole) matchStage.userId = userId;
 
-      const pipeline: any[] = [
+      const pipeline: PipelineStage[] = [
         { $match: matchStage },
         { $group: { _id: '$repo', count: { $sum: 1 } } },
         { $sort: { count: -1, _id: 1 } },
@@ -1131,8 +1218,12 @@ export class IssuesService {
         },
       ];
 
-      const [result] = await this.issueModel.aggregate(pipeline);
-      const data: ClusterRepoItem[] = (result?.data ?? []).map((r: any) => ({
+      const [result] = await this.issueModel.aggregate<{
+        data: ClusterReposAggRow[];
+        count: { total: number }[];
+      }>(pipeline);
+
+      const data: ClusterRepoItem[] = (result?.data ?? []).map((r) => ({
         repo: r._id,
         count: r.count,
       }));
@@ -1149,9 +1240,6 @@ export class IssuesService {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /issues/clusters/:cluster_id/issues?repo=&page=&limit=20
-  // Paginated issues for one repo within one cluster.
-  // NOTE: `repo` is a QUERY param, not a path param — repo names contain "/"
-  // (e.g. "owner/repo-name"), which would break route matching as a path segment.
   // ─────────────────────────────────────────────────────────────────────────────
   async getClusterRepoIssues(
     token: string,
@@ -1160,31 +1248,32 @@ export class IssuesService {
     page: number,
     limit: number,
   ): Promise<{ data: ClusterIssue[]; total: number }> {
-    const payload = this.jwtService.decode(token) as any;
+    const payload = this.jwtService.decode<DecodedJwtPayload>(token);
     const hasQaRole = payload.realm_access?.roles?.includes('QA') ?? false;
     const userId = payload.sub;
 
     try {
-      const filter: Record<string, any> = { cluster_id: clusterId, repo };
+      const filter: Record<string, unknown> = { cluster_id: clusterId, repo };
       if (!hasQaRole) filter.userId = userId;
 
       const [rows, total] = await Promise.all([
         this.issueModel
+
           .find(filter)
           .select('_id issueId title state created_at url')
           .sort({ created_at: -1 })
           .skip((page - 1) * limit)
           .limit(limit)
           .lean()
-          .exec(),
+          .exec() as unknown as Promise<ClusterIssueLean[]>,
         this.issueModel.countDocuments(filter),
       ]);
 
-      const data: ClusterIssue[] = rows.map((i: any) => ({
+      const data: ClusterIssue[] = rows.map((i) => ({
         _id: i._id.toString(),
         issueId: i.issueId,
         title: i.title,
-        state: i.state,
+        state: i.state as 'open' | 'closed',
         created_at: i.created_at ? i.created_at.toISOString() : null,
         url: i.url,
       }));
@@ -1198,14 +1287,12 @@ export class IssuesService {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // POST /issues/clusters/:cluster_id/summarize
-  // Fetches all issues in the cluster, sends titles + bodies to FastAPI/Gemini,
-  // returns { summary: string }.
   // ─────────────────────────────────────────────────────────────────────────────
   async summarizeCluster(
     token: string,
     clusterId: number,
   ): Promise<{ summary: string }> {
-    const payload = this.jwtService.decode(token) as any;
+    const payload = this.jwtService.decode<DecodedJwtPayload>(token);
     const userId = payload.sub;
     const issues = await this.issueModel
       .find({
@@ -1223,13 +1310,11 @@ export class IssuesService {
 
     const clusterLabel = issues[0].cluster_label ?? `Cluster ${clusterId}`;
 
-    // Build a compact payload — titles + first 300 chars of body to stay within token limits
     const issueSnippets = issues.map((iss, i) => {
       const body = (iss.body ?? '').slice(0, 300).replace(/\n+/g, ' ').trim();
       return `${i + 1}. [${iss.title}]${body ? ': ' + body : ''}`;
     });
 
-    // Delegate to FastAPI which already has the Gemini client configured
     const fastApiUrl = process.env.FASTAPI_URL ?? 'http://localhost:8000';
 
     const res = await fetch(`${fastApiUrl}/api/summarize-cluster`, {
@@ -1247,7 +1332,7 @@ export class IssuesService {
       throw new Error(`FastAPI summarize failed (${res.status}): ${text}`);
     }
 
-    const data = await res.json();
+    const data = (await res.json()) as SummarizeApiResponse;
     return { summary: data.summary };
   }
 
@@ -1262,7 +1347,6 @@ export class IssuesService {
     const RETRIEVAL_LIMIT = 8;
 
     try {
-      // ── no userId filter — search across all issues ───────────────────────
       const searchResult = await this.semanticSearchQAChat({
         query: dto.query,
         state: 'all',
@@ -1301,7 +1385,7 @@ export class IssuesService {
         throw new Error(`FastAPI chat-rag failed (${res.status}): ${text}`);
       }
 
-      const data = await res.json();
+      const data = (await res.json()) as ChatRagApiResponse;
       return { answer: data.answer, citations: data.citations ?? [] };
     } catch (error) {
       this.logger.error(normalizeError(error));
@@ -1311,15 +1395,15 @@ export class IssuesService {
     }
   }
 
-  // issues.service.ts — add this method to IssuesService
-
   async getQADashboardStats(token: string): Promise<QADashboardStats> {
-    const payload = this.jwtService.decode(token) as any;
-    // const userId = payload.sub;
+    // Token currently unused for scoping (QA dashboard is global), kept for
+    // future auth/audit use — decode without binding an unused variable.
+    this.jwtService.decode<DecodedJwtPayload>(token);
 
     try {
-      // ── reuse same counts/quality facet logic as SE dashboard ──────────────
-      const [countsResult] = await this.issueModel.aggregate([
+      const [countsResult] = await this.issueModel.aggregate<{
+        quality: QAQualityFacetRow[];
+      }>([
         {
           $facet: {
             quality: [
@@ -1414,7 +1498,7 @@ export class IssuesService {
         },
       ]);
 
-      const q = countsResult?.quality?.[0] ?? {
+      const q: QAQualityFacetRow = countsResult?.quality?.[0] ?? {
         total: 0,
         poorlyDescribed: 0,
         noise: 0,
@@ -1430,7 +1514,7 @@ export class IssuesService {
       const eightWeeksAgo = new Date();
       eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
 
-      const trendRaw = await this.issueModel.aggregate([
+      const trendRaw = await this.issueModel.aggregate<QualityTrendAggRow>([
         {
           $match: {
             created_at: { $gte: eightWeeksAgo },
@@ -1485,14 +1569,14 @@ export class IssuesService {
 
       // ── aging buckets for OPEN issues only ──────────────────────────────────
       const now = new Date();
-      const openIssues = await this.issueModel
+      const openIssues = (await this.issueModel
         .find({ state: 'open' })
         .select('_id issueId title created_at')
         .lean()
-        .exec();
+        .exec()) as unknown as OpenIssueLean[];
 
       const buckets = { '0-7': 0, '7-30': 0, '30+': 0 };
-      const withAge = openIssues.map((i: any) => {
+      const withAge = openIssues.map((i) => {
         const days = i.created_at
           ? Math.floor(
               (now.getTime() - new Date(i.created_at).getTime()) / 86400000,
@@ -1520,10 +1604,6 @@ export class IssuesService {
           created_at: i.created_at ?? null,
           daysOpen: i.daysOpen,
         }));
-
-      console.log(this.issueModel.collection.name);
-      console.log(await this.issueModel.countDocuments());
-      console.log(await this.issueModel.find().limit(3).lean());
 
       return {
         total: q.total,
@@ -1553,34 +1633,34 @@ export class IssuesService {
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /issues/duplicates
   // Flags near-duplicate issues (cosine similarity >= 0.85) within each cluster.
-  // Scoped to same cluster_id to keep comparisons cheap — duplicates virtually
-  // always share a problem domain already.
   // ─────────────────────────────────────────────────────────────────────────────
   async getDuplicateIssues(
     token: string,
   ): Promise<{ duplicateGroups: DuplicateGroup[] }> {
-    const payload = this.jwtService.decode(token) as any;
-    // const userId = payload.sub;
-    const SIMILARITY_THRESHOLD = 0.55;
+    // Token currently unused for scoping (duplicates are global), kept for
+    // future auth/audit use — decode without binding an unused variable.
+    this.jwtService.decode<DecodedJwtPayload>(token);
+    const SIMILARITY_THRESHOLD = 0.98;
 
     try {
-      const issues = await this.issueModel
+      const issues = (await this.issueModel
         .find({
           cluster_id: { $gte: 0 },
           embedding: { $ne: null },
           'embedding.0': { $exists: true },
         })
         .select(
-          '_id issueId title state url created_at cluster_id cluster_label embedding repo', // ← added repo
+          '_id issueId title state url created_at cluster_id cluster_label embedding repo',
         )
         .lean()
-        .exec();
+        .exec()) as unknown as DuplicateIssueLean[];
 
-      const byCluster = new Map<number, typeof issues>();
+      const byCluster = new Map<number, DuplicateIssueLean[]>();
       for (const issue of issues) {
-        const arr = byCluster.get(issue.cluster_id as number) ?? [];
+        const clusterId = issue.cluster_id as number;
+        const arr = byCluster.get(clusterId) ?? [];
         arr.push(issue);
-        byCluster.set(issue.cluster_id as number, arr);
+        byCluster.set(clusterId, arr);
       }
 
       const duplicateGroups: DuplicateGroup[] = [];
@@ -1589,8 +1669,7 @@ export class IssuesService {
         const n = clusterIssues.length;
         if (n < 2) continue;
 
-        // union-find over local indices
-        const parent = Array.from({ length: n }, (_, i) => i);
+        const parent: number[] = Array.from({ length: n }, (_, i) => i);
         const find = (x: number): number =>
           parent[x] === x ? x : (parent[x] = find(parent[x]));
         const union = (a: number, b: number) => {
@@ -1600,7 +1679,7 @@ export class IssuesService {
         };
 
         const pairSims: number[][] = Array.from({ length: n }, () =>
-          Array(n).fill(0),
+          new Array<number>(n).fill(0),
         );
 
         for (let i = 0; i < n; i++) {
@@ -1644,7 +1723,7 @@ export class IssuesService {
             issues: indices.map((idx) => {
               const iss = clusterIssues[idx];
               return {
-                _id: (iss as any)._id.toString(),
+                _id: iss._id.toString(),
                 issueId: iss.issueId,
                 title: iss.title,
                 state: iss.state as 'open' | 'closed',
@@ -1652,7 +1731,7 @@ export class IssuesService {
                 created_at: iss.created_at
                   ? iss.created_at.toISOString()
                   : null,
-                repo: (iss as any).repo ?? null, // ← added
+                repo: iss.repo ?? null,
               };
             }),
           });

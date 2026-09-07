@@ -1,13 +1,17 @@
 // app/(client)/issues/IssuesClient.tsx
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { getGithubAuthUrl, syncIssues } from "@/services/ingestion.service";
 import type { Issue } from "@/types/issue.type";
+import {
+  searchIssuesSemantic,
+  type SearchedIssue,
+} from "@/services/issues.service";
+import { getIssueQuality } from "@/lib/issueStatus";
 
 import { useCallback, useEffect, useRef } from "react";
-import { searchIssuesSemantic } from "@/services/issues.service";
 import { getAccessTokenClient } from "@/lib/getAccessToken.client";
 import { RepoFilter } from "./RepoFilter";
 
@@ -33,7 +37,9 @@ export function IssuesClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [semanticResults, setSemanticResults] = useState<Issue[] | null>(null);
+  const [semanticResults, setSemanticResults] = useState<
+    SearchedIssue[] | null
+  >(null);
   const [semanticTotal, setSemanticTotal] = useState<number>(0);
   const [searchMode, setSearchMode] = useState<"hybrid" | "text-only" | null>(
     null,
@@ -41,29 +47,28 @@ export function IssuesClient({
   const [isSearching, setIsSearching] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [issues] = useState<Issue[]>(initialIssues);
   const [search, setSearch] = useState(initialSearch);
   const [stateFilter, setStateFilter] = useState<"open" | "closed" | "all">(
     initialState,
   );
   const [selectedRepos, setSelectedRepos] = useState<string[]>(initialRepos);
-  const [token, setToken] = useState<string>("");
+
+  // Client-side token for RepoFilter's own requests — read once, synchronously.
+  const [token] = useState<string>(() => {
+    try {
+      return getAccessTokenClient();
+    } catch {
+      return "";
+    }
+  });
+
   const [syncStatus, setSyncStatus] = useState<
     "idle" | "syncing" | "done" | "error"
   >("idle");
   const [syncMessage, setSyncMessage] = useState("");
-  const [isPending, startTransition] = useTransition();
+  const [isPending] = useTransition();
 
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
-
-  // Fetch a client-side token once, for RepoFilter's own requests
-  useEffect(() => {
-    try {
-      setToken(getAccessTokenClient());
-    } catch {
-      // ignore — token stays empty, RepoFilter can handle that state
-    }
-  }, []);
 
   useEffect(() => {
     if (searchParams.get("github") === "connected") {
@@ -110,7 +115,7 @@ export function IssuesClient({
             1,
             stateFilter,
           );
-          setSemanticResults(result.data as any);
+          setSemanticResults(result.data);
           setSemanticTotal(result.total);
           setSearchMode(result.mode);
         } catch {
@@ -123,12 +128,14 @@ export function IssuesClient({
     [stateFilter],
   );
 
-  // Clear stale semantic results if the state filter changes mid-search
+  // Clear stale semantic results if the state filter changes mid-search.
+  // Deferred to a microtask so the setState calls that follow don't run
+  // synchronously in the effect body.
+
   useEffect(() => {
     if (semanticResults !== null && search.trim()) {
-      handleSearchChange(search);
+      queueMicrotask(() => handleSearchChange(search));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stateFilter]);
 
   function handleReposChange(repos: string[]) {
@@ -137,7 +144,8 @@ export function IssuesClient({
   }
 
   // Derive which issues + total to display:
-  const displayIssues = semanticResults ?? initialIssues;
+  const displayIssues: (Issue | SearchedIssue)[] =
+    semanticResults ?? initialIssues;
   const displayTotal = semanticResults !== null ? semanticTotal : total;
 
   async function handleSync() {
@@ -149,15 +157,15 @@ export function IssuesClient({
       setSyncMessage(`issues synced`);
       setTimeout(() => setSyncMessage(""), 3000);
       router.refresh();
-    } catch (err: any) {
-      if (err.message === "GITHUB_NOT_CONNECTED") {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "GITHUB_NOT_CONNECTED") {
         const { url } = await getGithubAuthUrl("/issues"); // ← added
         window.location.href = url;
         return;
       }
       setSyncStatus("error");
       setSyncMessage(
-        err.message === "UNAUTHORIZED"
+        err instanceof Error && err.message === "UNAUTHORIZED"
           ? "You must be logged in."
           : "Sync failed. Try again.",
       );
@@ -169,7 +177,8 @@ export function IssuesClient({
     }
   }
 
-  function formatDate(dateStr: string) {
+  function formatDate(dateStr: string | Date | null) {
+    if (!dateStr) return "—";
     return new Date(dateStr).toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "short",
@@ -327,104 +336,111 @@ export function IssuesClient({
                 </td>
               </tr>
             ) : (
-              displayIssues.map((issue: any, idx) => (
-                <tr
-                  key={issue._id ?? issue.issueId}
-                  className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                    idx === displayIssues.length - 1 ? "border-b-0" : ""
-                  }`}
-                >
-                  {/* Title + quality badges */}
-                  <td className="px-5 py-4">
-                    <div className="flex items-start gap-2">
-                      <div className="min-w-0">
-                        <a
-                          href={issue.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium text-gray-900 hover:underline line-clamp-1"
-                        >
-                          {issue.title}
-                        </a>
-                      </div>
+              displayIssues.map((issue, idx) => {
+                const { poorlyDescribed, noise } = getIssueQuality(issue);
+                const similarityScore =
+                  "similarity_score" in issue ? issue.similarity_score : null;
+                // Repository isn't part of SearchedIssue — only shown for
+                // plain Issue rows.
+                const repo = "repo" in issue ? issue.repo : undefined;
 
-                      <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                        {issue.isPoorlyDescribed && (
-                          <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px] font-semibold">
-                            Poorly described
-                          </span>
-                        )}
+                return (
+                  <tr
+                    key={issue._id ?? issue.issueId}
+                    className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
+                      idx === displayIssues.length - 1 ? "border-b-0" : ""
+                    }`}
+                  >
+                    {/* Title + quality badges */}
+                    <td className="px-5 py-4">
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0">
+                          <a
+                            href={issue.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-gray-900 hover:underline line-clamp-1"
+                          >
+                            {issue.title}
+                          </a>
+                        </div>
 
-                        {issue.isNoise && !issue.isPoorlyDescribed && (
-                          <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded text-[10px] font-semibold">
-                            Unclassified
-                          </span>
-                        )}
-
-                        {issue.cluster_label &&
-                          !issue.isPoorlyDescribed &&
-                          !issue.isNoise && (
-                            <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-medium">
-                              {issue.cluster_label}
+                        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                          {poorlyDescribed && (
+                            <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px] font-semibold">
+                              Poorly described
                             </span>
                           )}
-                      </div>
-                    </div>
-                  </td>
 
-                  {/* Repository */}
-                  <td className="px-5 py-4 text-gray-500">
-                    {issue.repo ?? "—"}
-                  </td>
+                          {noise && !poorlyDescribed && (
+                            <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded text-[10px] font-semibold">
+                              Unclassified
+                            </span>
+                          )}
 
-                  <td className="px-5 py-4">
-                    <StateBadge state={issue.state} />
-                  </td>
-
-                  {semanticResults !== null && (
-                    <td className="px-5 py-4 w-[90px]">
-                      {issue.similarity_score !== null ? (
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden w-10">
-                            <div
-                              className="h-full bg-indigo-500 rounded-full"
-                              style={{
-                                width: `${issue.similarity_score * 100}%`,
-                              }}
-                            />
-                          </div>
-                          <span className="text-xs text-gray-500 tabular-nums">
-                            {Math.round(issue.similarity_score * 100)}%
-                          </span>
+                          {issue.cluster_label &&
+                            !poorlyDescribed &&
+                            !noise && (
+                              <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-medium">
+                                {issue.cluster_label}
+                              </span>
+                            )}
                         </div>
-                      ) : (
-                        <span className="text-xs text-gray-300">
-                          text match
-                        </span>
-                      )}
+                      </div>
                     </td>
-                  )}
 
-                  <td className="px-5 py-4 text-gray-500">
-                    {formatDate(issue.created_at)}
-                  </td>
+                    {/* Repository */}
+                    <td className="px-5 py-4 text-gray-500">{repo ?? "—"}</td>
 
-                  <td className="px-5 py-4 text-gray-500">
-                    {formatDate(issue.created_at)}
-                  </td>
+                    <td className="px-5 py-4">
+                      <StateBadge state={issue.state} />
+                    </td>
 
-                  <td className="px-3 py-4">
-                    <a
-                      href={issue.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-gray-300 hover:text-gray-600 transition-colors"
-                    >
-                      <ExternalLinkIcon />
-                    </a>
-                  </td>
-                </tr>
-              ))
+                    {semanticResults !== null && (
+                      <td className="px-5 py-4 w-[90px]">
+                        {similarityScore !== null ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden w-10">
+                              <div
+                                className="h-full bg-indigo-500 rounded-full"
+                                style={{
+                                  width: `${similarityScore * 100}%`,
+                                }}
+                              />
+                            </div>
+                            <span className="text-xs text-gray-500 tabular-nums">
+                              {Math.round(similarityScore * 100)}%
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-300">
+                            text match
+                          </span>
+                        )}
+                      </td>
+                    )}
+
+                    <td className="px-5 py-4 text-gray-500">
+                      {formatDate(issue.created_at)}
+                    </td>
+
+                    <td className="px-5 py-4 text-gray-500">
+                      {formatDate(issue.created_at)}
+                    </td>
+
+                    <td className="px-3 py-4">
+                      <a
+                        href={issue.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-gray-300 hover:text-gray-600 transition-colors"
+                      >
+                        <ExternalLinkIcon />
+                      </a>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

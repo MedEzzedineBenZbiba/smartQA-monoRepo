@@ -9,7 +9,7 @@ export interface NormalizedError {
   statusText: string | null;
   message: string;
   cause?: string;
-  responseData?: any
+  responseData?: any;
 }
 
 export function normalizeError(error: AxiosError): NormalizedError {
@@ -22,6 +22,6 @@ export function normalizeError(error: AxiosError): NormalizedError {
     statusText: error.response?.statusText ?? null,
     message: error.message,
     cause: error.cause?.toString(),
-    responseData: error.response?.data
+    responseData: error.response?.data,
   };
 }

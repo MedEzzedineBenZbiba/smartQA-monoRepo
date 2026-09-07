@@ -33,9 +33,11 @@ export class SyncJobService {
         issueCount: 0,
       });
       return await this.syncJobRepository.save(job);
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -45,9 +47,11 @@ export class SyncJobService {
         where: { userId },
         order: { createdAt: 'DESC' },
       });
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -60,9 +64,11 @@ export class SyncJobService {
           nextSyncAt: LessThanOrEqual(new Date()),
         },
       });
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
-      throw new InternalServerErrorException(error.message);
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -72,10 +78,11 @@ export class SyncJobService {
       if (result.affected === 0) {
         throw new NotFoundException(`Sync job ${id} not found`);
       }
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -88,10 +95,11 @@ export class SyncJobService {
       if (result.affected === 0) {
         throw new NotFoundException(`Sync job ${id} not found`);
       }
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -105,10 +113,11 @@ export class SyncJobService {
         { id },
         { status: SyncJobStatus.ACTIVE, nextSyncAt },
       );
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
@@ -118,10 +127,11 @@ export class SyncJobService {
       if (result.affected === 0) {
         throw new NotFoundException(`Sync job ${id} not found`);
       }
-    } catch (error: any) {
-      this.logger.error(normalizeError(error));
+    } catch (error: unknown) {
+      const normalized = normalizeError(error);
+      this.logger.error(normalized);
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException(error.message);
+      throw new InternalServerErrorException(normalized.message);
     }
   }
 
