@@ -8,8 +8,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
-import { normalizeAxiosError } from 'src/common/utils/axios-error.util';
-import { CreateUserDto } from 'src/dto/create-user.dto';
+import { normalizeAxiosError } from '../common/utils/axios-error.util';
+import { CreateUserDto } from '../dto/create-user.dto';
 import url from 'url';
 
 export interface KeycloakTokenResponse {

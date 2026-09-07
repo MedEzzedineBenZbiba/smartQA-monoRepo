@@ -8,8 +8,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ClientKafka } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
-import { normalizeAxiosError } from 'src/common/utils/axios-error.util';
-import { KAFKA_TOPICS } from 'src/constants/kafka.constants';
+import { normalizeAxiosError } from '../common/utils/axios-error.util';
+import { KAFKA_TOPICS } from '../constants/kafka.constants';
 
 interface ResetNotification {
   email: string;

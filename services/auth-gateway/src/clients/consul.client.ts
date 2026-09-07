@@ -13,7 +13,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { exit } from 'process';
 import { firstValueFrom } from 'rxjs';
-import { normalizeAxiosError } from 'src/common/utils/axios-error.util';
+import { normalizeAxiosError } from '../common/utils/axios-error.util';
 
 @Injectable()
 export class ConsulClient implements OnModuleInit, OnModuleDestroy {

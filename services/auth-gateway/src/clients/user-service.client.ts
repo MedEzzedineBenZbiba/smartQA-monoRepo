@@ -10,7 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { ConsulClient } from './consul.client';
 import { CreateUserDto } from 'src/dto/create-user.dto';
-import { normalizeAxiosError } from 'src/common/utils/axios-error.util';
+import { normalizeAxiosError } from '../common/utils/axios-error.util';
 
 interface UserRecord {
   id: string;

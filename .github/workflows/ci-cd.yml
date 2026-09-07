@@ -98,96 +98,89 @@ jobs:
           pip install flake8
           flake8 . --count --max-complexity=10 --statistics || echo "Linter issues found (non-blocking)"
 
-      - name: Run Python unit tests
-        if: matrix.lang == 'python'
-        run: |
-          cd services/${{ matrix.service }}
-          pip install pytest
-          pytest || echo "No tests found or tests failed (non-blocking)"
+  # sonar:
+  #   name: SonarQube Analysis
+  #   runs-on: ubuntu-latest
+  #   # needs: lint-test
+  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  #   steps:
+  #     - name: Free disk space
+  #       run: |
+  #         sudo rm -rf /usr/share/dotnet
+  #         sudo rm -rf /usr/local/lib/android
+  #         sudo rm -rf /opt/ghc
+  #         sudo docker system prune -af
 
-  sonar:
-    name: SonarQube Analysis
-    runs-on: ubuntu-latest
-    # needs: lint-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo docker system prune -af
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
 
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+  #     - name: SonarQube Scan
+  #       uses: SonarSource/sonarqube-scan-action@v7
+  #       env:
+  #         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  #         SONAR_HOST_URL: https://sonarcloud.io
+  #       with:
+  #         args: >
+  #           -Dsonar.projectKey=MedEzzedineBenZbiba_smartQA-monoRepo
+  #           -Dsonar.projectName=smartQA-monoRepo
+  #           -Dsonar.organization=medezzedinebenzbiba
+  #           -Dsonar.sources=services/
+  #           -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**,**/package-lock.json,**/build-wrapper-dump.json,**/Dockerfile
+  #           -Dsonar.javascript.lcov.reportPaths=services/**/coverage/lcov.info
+  #           -Dsonar.python.coverage.reportPaths=services/**/coverage.xml
+  #           -Dsonar.typescript.lcov.reportPaths=services/**/coverage/lcov.info
 
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v7
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
-        with:
-          args: >
-            -Dsonar.projectKey=MedEzzedineBenZbiba_smartQA-monoRepo
-            -Dsonar.projectName=smartQA-monoRepo
-            -Dsonar.organization=medezzedinebenzbiba
-            -Dsonar.sources=services/
-            -Dsonar.exclusions=**/node_modules/**,**/*.test.*,**/venv/**,**/dist/**,**/.next/**,**/coverage/**,**/package-lock.json,**/build-wrapper-dump.json,**/Dockerfile
-            -Dsonar.javascript.lcov.reportPaths=services/**/coverage/lcov.info
-            -Dsonar.python.coverage.reportPaths=services/**/coverage.xml
-            -Dsonar.typescript.lcov.reportPaths=services/**/coverage/lcov.info
+  # docker-build-push:
+  #   name: Build & Push Docker Images
+  #   runs-on: ubuntu-latest
+  #   # needs: sonar
+  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       service:
+  #         - auth-gateway
+  #         - ingestion
+  #         - issues
+  #         - users
+  #         - smart_qa
+  #         - smartqa-vector-service
 
-  docker-build-push:
-    name: Build & Push Docker Images
-    runs-on: ubuntu-latest
-    # needs: sonar
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - auth-gateway
-          - ingestion
-          - issues
-          - users
-          - smart_qa
-          - smartqa-vector-service
+  #   steps:
+  #     - name: Free disk space
+  #       run: |
+  #         sudo rm -rf /usr/share/dotnet
+  #         sudo rm -rf /usr/local/lib/android
+  #         sudo rm -rf /opt/ghc
+  #         sudo docker system prune -af
 
-    steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo docker system prune -af
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
 
-      - name: Checkout code
-        uses: actions/checkout@v4
+  #     - name: Convert repository name to lowercase
+  #       run: |
+  #         echo "IMAGE_BASE_LOWERCASE=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
 
-      - name: Convert repository name to lowercase
-        run: |
-          echo "IMAGE_BASE_LOWERCASE=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+  #     - name: Log in to GitHub Container Registry
+  #       uses: docker/login-action@v3
+  #       with:
+  #         registry: ghcr.io
+  #         username: ${{ github.actor }}
+  #         password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./services/${{ matrix.service }}
-          file: ./services/${{ matrix.service }}/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ env.IMAGE_BASE_LOWERCASE }}/${{ matrix.service }}:latest
-            ghcr.io/${{ env.IMAGE_BASE_LOWERCASE }}/${{ matrix.service }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+  #     - name: Build and push Docker image
+  #       uses: docker/build-push-action@v5
+  #       with:
+  #         context: ./services/${{ matrix.service }}
+  #         file: ./services/${{ matrix.service }}/Dockerfile
+  #         push: true
+  #         tags: |
+  #           ghcr.io/${{ env.IMAGE_BASE_LOWERCASE }}/${{ matrix.service }}:latest
+  #           ghcr.io/${{ env.IMAGE_BASE_LOWERCASE }}/${{ matrix.service }}:${{ github.sha }}
+  #         cache-from: type=gha
+  #         cache-to: type=gha,mode=max

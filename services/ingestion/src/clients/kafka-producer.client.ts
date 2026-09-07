@@ -8,8 +8,8 @@ import {
 } from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
 import { AxiosError } from 'axios';
-import { normalizeError } from 'src/common/utils/axios-error.util';
-import { KAFKA_TOPICS } from 'src/constants/kafka.constants';
+import { normalizeError } from '../common/utils/axios-error.util';
+import { KAFKA_TOPICS } from '../constants/kafka.constants';
 
 interface GithubIssue {
   userId?: string;

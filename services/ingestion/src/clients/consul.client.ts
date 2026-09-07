@@ -9,7 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
-import { normalizeError } from 'src/common/utils/axios-error.util';
+import { normalizeError } from '../common/utils/axios-error.util';
 
 interface ConsulHealthCheck {
   AggregatedStatus: string;

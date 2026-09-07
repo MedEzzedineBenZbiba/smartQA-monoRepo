@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 import { ConsulClient } from './consul.client';
-import { normalizeError } from 'src/common/utils/axios-error.util';
+import { normalizeError } from '../common/utils/axios-error.util';
 import { SyncFrequency, SyncJobStatus } from '../interfaces/sync-job.interface';
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
