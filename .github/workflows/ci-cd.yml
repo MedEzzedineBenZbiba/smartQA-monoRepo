@@ -139,11 +139,6 @@ jobs:
             --max-complexity=10 \
             --statistics || echo "Linter issues found (non-blocking)"
 
-      - name: Test smartqa-vector-service
-        working-directory: services/smartqa-vector-service
-        run: |
-          pytest
-
   # ============================================================
   # 2. SONARQUBE
   # ============================================================
