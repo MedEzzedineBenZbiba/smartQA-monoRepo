@@ -7,42 +7,71 @@ import {
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { In, Not } from 'typeorm';
 
 import { UserService } from './user.service';
 import { User } from './entities/user.entity';
 import { UserRole } from './entities/userRole.enum';
-import { In, Not } from 'typeorm';
+import { CreateUserDto } from './dto/create-user.dto';
 
 describe('UserService', () => {
   let service: UserService;
 
-  // ── chainable query builder mock ─────────────────────────────────────────
-  const makeQueryBuilder = (resolvedValue: any) => {
-    const qb: any = {
-      select: jest.fn(() => qb),
-      addSelect: jest.fn(() => qb),
-      where: jest.fn(() => qb),
-      andWhere: jest.fn(() => qb),
-      groupBy: jest.fn(() => qb),
-      orderBy: jest.fn(() => qb),
-      getRawMany: jest.fn().mockResolvedValue(resolvedValue),
-      getMany: jest.fn().mockResolvedValue(resolvedValue),
-    };
+  // ── typed chainable query builder mock ───────────────────────────────────
+  type MockQueryBuilder = {
+    select: jest.Mock<MockQueryBuilder, [string, string?]>;
+    addSelect: jest.Mock<MockQueryBuilder, [string, string?]>;
+    where: jest.Mock<MockQueryBuilder, [string, object?]>;
+    andWhere: jest.Mock<MockQueryBuilder, [string, object?]>;
+    groupBy: jest.Mock<MockQueryBuilder, [string]>;
+    orderBy: jest.Mock<MockQueryBuilder, [string, ('ASC' | 'DESC')?]>;
+    getRawMany: jest.Mock<Promise<unknown[]>, []>;
+    getMany: jest.Mock<Promise<unknown[]>, []>;
+  };
+
+  const makeQueryBuilder = (resolvedValue: unknown[]): MockQueryBuilder => {
+    const qb = {} as MockQueryBuilder;
+
+    qb.select = jest.fn<MockQueryBuilder, [string, string?]>(() => qb);
+    qb.addSelect = jest.fn<MockQueryBuilder, [string, string?]>(() => qb);
+    qb.where = jest.fn<MockQueryBuilder, [string, object?]>(() => qb);
+    qb.andWhere = jest.fn<MockQueryBuilder, [string, object?]>(() => qb);
+    qb.groupBy = jest.fn<MockQueryBuilder, [string]>(() => qb);
+    qb.orderBy = jest.fn<MockQueryBuilder, [string, ('ASC' | 'DESC')?]>(
+      () => qb,
+    );
+    qb.getRawMany = jest.fn<Promise<unknown[]>, []>(() =>
+      Promise.resolve(resolvedValue),
+    );
+    qb.getMany = jest.fn<Promise<unknown[]>, []>(() =>
+      Promise.resolve(resolvedValue),
+    );
+
     return qb;
   };
 
-  const mockUserRepository = {
-    count: jest.fn(),
-    createQueryBuilder: jest.fn(),
-    create: jest.fn(),
-    save: jest.fn(),
-    findOne: jest.fn(),
-    findAndCount: jest.fn(),
-    update: jest.fn(),
+  type MockUserRepository = {
+    count: jest.Mock<Promise<number>, [object?]>;
+    createQueryBuilder: jest.Mock<MockQueryBuilder, [string?]>;
+    create: jest.Mock<Partial<User>, [Partial<User>]>;
+    save: jest.Mock<Promise<Partial<User>>, [Partial<User>]>;
+    findOne: jest.Mock<Promise<Partial<User> | null>, [object]>;
+    findAndCount: jest.Mock<Promise<[Partial<User>[], number]>, [object]>;
+    update: jest.Mock<Promise<{ affected: number }>, [object, object]>;
+  };
+
+  const mockUserRepository: MockUserRepository = {
+    count: jest.fn<Promise<number>, [object?]>(),
+    createQueryBuilder: jest.fn<MockQueryBuilder, [string?]>(),
+    create: jest.fn<Partial<User>, [Partial<User>]>(),
+    save: jest.fn<Promise<Partial<User>>, [Partial<User>]>(),
+    findOne: jest.fn<Promise<Partial<User> | null>, [object]>(),
+    findAndCount: jest.fn<Promise<[Partial<User>[], number]>, [object]>(),
+    update: jest.fn<Promise<{ affected: number }>, [object, object]>(),
   };
 
   const mockJwtService = {
-    verifyAsync: jest.fn(),
+    verifyAsync: jest.fn<Promise<{ email: string }>, [string, object]>(),
   };
 
   const mockLogger = {
@@ -112,12 +141,11 @@ describe('UserService', () => {
 
     // NOTE: this Promise.all has 3 branches (count, role queryBuilder,
     // getGenderStats → its own queryBuilder). Even when testing a failure
-    // in one branch, the OTHER branches must still resolve successfully —
-    // otherwise a resetted mock (via afterEach's jest.clearAllMocks())
-    // returns `undefined` from createQueryBuilder(), which throws
-    // synchronously on `.select(...)` and orphans the rejected `count()`
-    // promise, crashing the process under Node's unhandled-rejection
-    // handling instead of failing the test cleanly.
+    // in one branch, the other branches must still resolve successfully —
+    // otherwise a mock reset by afterEach's jest.clearAllMocks() returns
+    // `undefined` from createQueryBuilder(), which throws synchronously on
+    // `.select(...)` and orphans the rejected `count()` promise, crashing
+    // the process under Node's unhandled-rejection handling.
     it('should wrap errors as InternalServerErrorException', async () => {
       mockUserRepository.count.mockRejectedValue(new Error('db down'));
 
@@ -176,7 +204,7 @@ describe('UserService', () => {
     });
 
     it('should wrap errors as InternalServerErrorException', async () => {
-      const qb = makeQueryBuilder(null);
+      const qb = makeQueryBuilder([]);
       qb.getRawMany.mockRejectedValue(new Error('db down'));
       mockUserRepository.createQueryBuilder.mockReturnValue(qb);
 
@@ -190,17 +218,17 @@ describe('UserService', () => {
   // create
   // ---------------------------------------------------------------------
   describe('create', () => {
-    const dto = {
+    const dto: CreateUserDto = {
       username: 'john',
       email: 'john@example.com',
       password: 'pass123',
-    };
+    } as CreateUserDto;
 
     it('should create and save a new user', async () => {
       mockUserRepository.create.mockReturnValue({ id: 'u1', ...dto });
       mockUserRepository.save.mockResolvedValue({ id: 'u1', ...dto });
 
-      const result = await service.create(dto as any);
+      const result = await service.create(dto);
 
       expect(mockUserRepository.create).toHaveBeenCalledWith(dto);
       expect(mockUserRepository.save).toHaveBeenCalledWith({
@@ -214,7 +242,7 @@ describe('UserService', () => {
       mockUserRepository.create.mockReturnValue(dto);
       mockUserRepository.save.mockRejectedValue(new Error('duplicate key'));
 
-      await expect(service.create(dto as any)).rejects.toThrow(
+      await expect(service.create(dto)).rejects.toThrow(
         InternalServerErrorException,
       );
     });
@@ -232,6 +260,7 @@ describe('UserService', () => {
 
       expect(qb.where).toHaveBeenCalledWith(
         'user.createdAt >= :threeMonthsAgo',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- expect.any() is typed `any` in @types/jest
         expect.objectContaining({ threeMonthsAgo: expect.any(Date) }),
       );
       expect(qb.andWhere).toHaveBeenCalledWith('user.role != :role', {
@@ -241,7 +270,7 @@ describe('UserService', () => {
     });
 
     it('should wrap errors as InternalServerErrorException', async () => {
-      const qb = makeQueryBuilder(null);
+      const qb = makeQueryBuilder([]);
       qb.getMany.mockRejectedValue(new Error('db down'));
       mockUserRepository.createQueryBuilder.mockReturnValue(qb);
 
@@ -377,7 +406,9 @@ describe('UserService', () => {
 
       expect(mockUserRepository.findAndCount).toHaveBeenCalledWith({
         where: [
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- expect.anything() is typed `any` in @types/jest
           { username: expect.anything(), role: In(['admin']) },
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- expect.anything() is typed `any` in @types/jest
           { email: expect.anything(), role: In(['admin']) },
         ],
         take: 10,
@@ -425,6 +456,7 @@ describe('UserService', () => {
 
       expect(mockUserRepository.update).toHaveBeenCalledWith(
         { id: 'u1' },
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- expect.any() is typed `any` in @types/jest
         { lastIngestionDate: expect.any(Date) },
       );
     });
