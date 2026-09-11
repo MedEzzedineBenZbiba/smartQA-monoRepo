@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Issue } from './issue.schema';
@@ -1296,7 +1297,6 @@ export class IssuesService {
     const userId = payload.sub;
     const issues = await this.issueModel
       .find({
-        userId,
         cluster_id: clusterId,
         embedding: { $ne: null },
       })
@@ -1305,7 +1305,7 @@ export class IssuesService {
       .exec();
 
     if (issues.length === 0) {
-      throw new Error(`No issues found for cluster ${clusterId}`);
+      throw new NotFoundException(`No issues found for cluster ${clusterId}`);
     }
 
     const clusterLabel = issues[0].cluster_label ?? `Cluster ${clusterId}`;
