@@ -8,6 +8,7 @@ import { getOneLetterFromUserName } from "@/lib/extractDataFromSession";
 import { logout } from "@/app/data/logout";
 import { Employee } from "@/types/employee.type";
 import { getAuthentificatedUser } from "@/services/users.service";
+import { SessionData } from "@/types/sessionData.type";
 
 function NavItem({
   href,
@@ -35,7 +36,7 @@ function NavItem({
   );
 }
 
-export function Header(sessionData: SessionData) {
+export function Header({ sessionData }: { sessionData: SessionData }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -50,6 +51,10 @@ export function Header(sessionData: SessionData) {
       setUser(fetchedUser);
       setIsLoading(false);
     }
+    if (!sessionData?.access_token) {
+      return; // no session, nothing to fetch
+    }
+
     fetchUser();
   }, [sessionData]);
 

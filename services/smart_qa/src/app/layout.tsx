@@ -28,15 +28,25 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = (await cookies()).get("session")?.value ?? null;
-  let decryptSession = null;
+  let decryptSession: SessionData | null = null;
+
   if (session) {
-    decryptSession = (await decrypt(session)) as SessionData;
+    try {
+      const raw = await decrypt(session);
+      if (raw && typeof (raw as SessionData).access_token === "string") {
+        decryptSession = raw as SessionData;
+      } else {
+        console.error("Decrypted session missing a valid access_token");
+      }
+    } catch (err) {
+      console.error("Failed to decrypt session cookie", err);
+    }
   }
 
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <AuthHydrator session={decryptSession} />
       <body>
+        <AuthHydrator session={decryptSession} />
         {decryptSession && <Header sessionData={decryptSession} />}
         {children}
       </body>

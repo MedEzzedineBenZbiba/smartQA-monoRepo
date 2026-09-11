@@ -19,7 +19,7 @@ interface SyncJob {
   repoName: string;
   orgName: string;
   repoUrl: string;
-  frequency: "1h" | "6h" | "12h" | "24h";
+  frequency: "5m" | "1h" | "6h" | "12h" | "24h";
   status: "active" | "paused" | "syncing" | "failed";
   lastSyncedAt: string | null;
   nextSyncAt: string;
@@ -47,6 +47,7 @@ function timeAgo(dateStr: string | null): string {
 
 function freqLabel(f: string): string {
   const map: Record<string, string> = {
+    "5m": "Every 5 minutes",
     "1h": "Every hour",
     "6h": "Every 6 hours",
     "12h": "Every 12 hours",
@@ -54,7 +55,6 @@ function freqLabel(f: string): string {
   };
   return map[f] ?? f;
 }
-
 // ── Sub-components ─────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: SyncJob["status"] }) {
@@ -89,7 +89,7 @@ function AddSyncModal({
   ) => Promise<void>;
   onClose: () => void;
 }) {
-  const [frequency, setFrequency] = useState("6h");
+  const [frequency, setFrequency] = useState("5m");
   const [loading, setLoading] = useState(false);
 
   async function handleConfirm() {
@@ -109,8 +109,8 @@ function AddSyncModal({
         <p className="text-[12px] font-medium text-gray-600 mb-2">
           Sync frequency
         </p>
-        <div className="grid grid-cols-2 gap-2 mb-6">
-          {["1h", "6h", "12h", "24h"].map((f) => (
+        <div className="grid grid-cols-3 gap-2 mb-6">
+          {["5m", "1h", "6h", "12h", "24h"].map((f) => (
             <button
               key={f}
               onClick={() => setFrequency(f)}

@@ -5,16 +5,26 @@ interface DecodedToken {
   preferred_username: string;
 }
 
+function decodeToken(sessionData: SessionData): DecodedToken | null {
+  const token = sessionData?.access_token;
+  if (typeof token !== "string" || token.length === 0) {
+    return null;
+  }
+  try {
+    return jwtDecode<DecodedToken>(token);
+  } catch {
+    return null;
+  }
+}
+
 export function getOneLetterFromUserName(sessionData: SessionData) {
-  const decoded = jwtDecode<DecodedToken>(sessionData.access_token);
-  return decoded.preferred_username.slice(0, 1);
+  return decodeToken(sessionData)?.preferred_username?.slice(0, 1) ?? "";
 }
 
 export function getUserName(sessionData: SessionData) {
-  const decoded = jwtDecode<DecodedToken>(sessionData.access_token);
-  return decoded.preferred_username;
+  return decodeToken(sessionData)?.preferred_username ?? "";
 }
 
 export function getUserRole(sessionData: SessionData) {
-  return sessionData.role[0];
+  return sessionData?.role?.[0] ?? "";
 }

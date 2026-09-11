@@ -7,6 +7,12 @@ import {
   getUserOrgs,
 } from "@/services/ingestion.service";
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Repositories",
+};
+
 export default async function QaReposPage() {
   const [statusRes, authUrlRes] = await Promise.all([
     getGithubStatus(),
