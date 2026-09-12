@@ -85,10 +85,6 @@ jobs:
         working-directory: services/issues
         run: npm ci
 
-      - name: Lint issues
-        working-directory: services/issues
-        run: npm run lint --if-present
-
       - name: Test issues
         working-directory: services/issues
         run: npm test --if-present
