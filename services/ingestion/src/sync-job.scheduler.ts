@@ -17,7 +17,7 @@ export class SyncJobScheduler {
   ) {}
 
   // Runs every 30 minutes — checks for due sync jobs and processes them
-  @Cron(CronExpression.EVERY_30_MINUTES)
+  @Cron(CronExpression.EVERY_5_MINUTES)
   async handleDueSyncJobs(): Promise<void> {
     this.logger.log('Scheduler: checking for due sync jobs…');
 
@@ -106,14 +106,15 @@ export class SyncJobScheduler {
   // ── Helper ────────────────────────────────────────────────────────────────
 
   private computeNextSyncAt(frequency: SyncFrequency): Date {
-    const hoursMap: Record<SyncFrequency, number> = {
-      [SyncFrequency.ONE_HOUR]: 1,
-      [SyncFrequency.SIX_HOURS]: 6,
-      [SyncFrequency.TWELVE_HOURS]: 12,
-      [SyncFrequency.DAILY]: 24,
+    const minutesMap: Record<SyncFrequency, number> = {
+      [SyncFrequency.FIVE_MIN]: 5,
+      [SyncFrequency.ONE_HOUR]: 60,
+      [SyncFrequency.SIX_HOURS]: 6 * 60,
+      [SyncFrequency.TWELVE_HOURS]: 12 * 60,
+      [SyncFrequency.DAILY]: 24 * 60,
     };
     const next = new Date();
-    next.setHours(next.getHours() + hoursMap[frequency]);
+    next.setMinutes(next.getMinutes() + minutesMap[frequency]);
     return next;
   }
 }

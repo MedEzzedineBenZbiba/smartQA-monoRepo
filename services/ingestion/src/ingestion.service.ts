@@ -194,6 +194,7 @@ export class IngestionService {
         const { data, headers } = await firstValueFrom(
           this.httpService.get<GithubIssue[]>(currentUrl, requestConfig),
         );
+        console.log(data);
         this.kafkaProducerClient.publishIssues(data, userId);
 
         const linkHeader = headers.link as string | undefined;
@@ -229,6 +230,7 @@ export class IngestionService {
     const nextPattern = /(?<=<)([\S]*)(?=>; rel="next")/i;
 
     const params = new URLSearchParams({
+      filter: 'all',
       state: 'all',
       per_page: String(GITHUB_ISSUES_PER_PAGE),
       ...(lastSyncedAt ? { since: lastSyncedAt.toISOString() } : {}),
@@ -455,6 +457,7 @@ export class IngestionService {
     lastIngestionDate: Date | string | null,
   ): string {
     const params = new URLSearchParams({
+      filter: 'all',
       state: 'all',
       per_page: String(GITHUB_ISSUES_PER_PAGE),
     });

@@ -10,11 +10,13 @@ import { Partitioners } from 'kafkajs';
 import { JwtModule } from '@nestjs/jwt';
 import { UserServiceClient } from './clients/user-service.client';
 import { SyncJobScheduler } from './sync-job.scheduler';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     HttpModule,
     JwtModule.register({}),
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }), // make ConfigService available
     ClientsModule.registerAsync([
       {

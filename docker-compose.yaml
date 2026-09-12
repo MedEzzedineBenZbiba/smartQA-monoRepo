@@ -96,7 +96,6 @@ services:
   mongodb-issuesDB:
     image: mongodb/mongodb-atlas-local:8.0.17-20260218T161908Z
     container_name: mongodb
-    # hostname: localhost   <-- remove this
     restart: unless-stopped
     ports:
       - "27017:27017"
@@ -133,242 +132,251 @@ services:
       mongodb-issuesDB:
         condition: service_healthy
 
-    ingestion-service:
-      build: ./ingestion
-      ports:
-        - "8002:8002"
-      environment:
-        - NODE_ENV=production
-      env_file:
-        - ./ingestion/.env
-      depends_on:
-        consul:
-          condition: service_healthy
-        kafka:
-          condition: service_healthy
-        kafka-init:
-          condition: service_completed_successfully
-      labels:
-        - "traefik.enable=true"
-        - "traefik.http.routers.ingestion-service.rule=PathPrefix(`/ingestion`)"
-        - "traefik.http.routers.ingestion-service.entrypoints=websecure"
-        - "traefik.http.routers.ingestion-service.tls=true"
-        # - "traefik.http.routers.ingestion-service.middlewares=secure-api@file" until you build the frontend, leave it commented
+  ingestion-service:
+    build: ./ingestion
+    ports:
+      - "8002:8002"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - ./ingestion/.env
+    depends_on:
+      consul:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ingestion-service.rule=PathPrefix(`/ingestion`)"
+      - "traefik.http.routers.ingestion-service.entrypoints=websecure"
+      - "traefik.http.routers.ingestion-service.tls=true"
+      # - "traefik.http.routers.ingestion-service.middlewares=secure-api@file" until you build the frontend, leave it commented
 
-    user-service:
-      build: ./users
-      ports:
-        - "8004:8004"
-      environment:
-        - NODE_ENV=production
-      env_file:
-        - ./users/.env
-      depends_on:
-        consul:
-          condition: service_healthy
-        posgresql-usersDB:
-          condition: service_healthy
-      labels:
-        - "traefik.enable=true"
-        - "traefik.http.routers.user-service.rule=PathPrefix(`/users`)"
-        - "traefik.http.routers.user-service.entrypoints=websecure"
-        - "traefik.http.routers.user-service.tls=true"
-        - "traefik.http.routers.user-service.middlewares=secure-api@file"
+  user-service:
+    build: ./users
+    ports:
+      - "8004:8004"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - ./users/.env
+    depends_on:
+      consul:
+        condition: service_healthy
+      posgresql-usersDB:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.user-service.rule=PathPrefix(`/users`)"
+      - "traefik.http.routers.user-service.entrypoints=websecure"
+      - "traefik.http.routers.user-service.tls=true"
+      - "traefik.http.routers.user-service.middlewares=secure-api@file"
 
-    posgresql-usersDB:
-      # see https://hub.docker.com/_/postgres for list of postgres image versions on docker hub
-      #image: postgres:latest # To download the latest image
-      #image: postgres:17.4-alpine # To download a specific version, here the version 17.4 of Postgresql under an alpine linux distribution
-      image: postgres:17.4-alpine
-      container_name: postgres
-      volumes:
-        - postgresql_data:/var/lib/postgresql/data
-      # env_file:
-      #   - .env
-      environment:
-        POSTGRES_DB: users
-        POSTGRES_USER: users
-        POSTGRES_PASSWORD: users
-      ports:
-        - "5432:5432" # HOST_PORT:CONTAINER_PORT
-      healthcheck: # ← add this
-        test: ["CMD-SHELL", "pg_isready -U users -d users"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
-        start_period: 10s
+  posgresql-usersDB:
+    image: postgres:17.4-alpine
+    container_name: postgres
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: users
+      POSTGRES_USER: users
+      POSTGRES_PASSWORD: users
+    ports:
+      - "5432:5432" # HOST_PORT:CONTAINER_PORT
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U users -d users"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-    pgadmin:
-      # see https://hub.docker.com/r/dpage/pgadmin4
-      image: dpage/pgadmin4:latest # To download the latest image
-      container_name: pgadmin
-      volumes:
-        - pgadmin_working_dir:/var/lib/pgadmin
-        - pgadmin_config_dir:/pgadmin4
-      # env_file:
-      #   - .env
-      environment:
-        POSTGRES_USER: users
-        POSTGRES_PASSWORD: users
-        PGADMIN_DEFAULT_EMAIL: users@gmail.com
-        PGADMIN_DEFAULT_PASSWORD: password
-      depends_on:
-        - posgresql-usersDB
-      ports:
-        - "5433:80" # HOST_PORT:CONTAINER_PORT
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    volumes:
+      - pgadmin_working_dir:/var/lib/pgadmin
+      - pgadmin_config_dir:/pgadmin4
+    environment:
+      POSTGRES_USER: users
+      POSTGRES_PASSWORD: users
+      PGADMIN_DEFAULT_EMAIL: users@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: password
+    depends_on:
+      - posgresql-usersDB
+    ports:
+      - "5433:80" # HOST_PORT:CONTAINER_PORT
 
-    auth-gateway-service:
-      build: ./auth-gateway
-      depends_on:
-        consul:
-          condition: service_healthy
-        # kafka:
-        #   condition: service_healthy      # ← waits for Kafka to be ready
-        # kafka-init:
-        #   condition: service_completed_successfully  # ← waits for topics to be created
-      ports:
-        - "8001:8001"
-      environment:
-        - NODE_ENV=production
-      env_file:
-        - ./auth-gateway/.env
-      labels:
-        - "traefik.enable=true"
-        - "traefik.http.routers.auth-gateway-service.rule=PathPrefix(`/auth`)"
-        - "traefik.http.routers.auth-gateway-service.entrypoints=websecure"
-        - "traefik.http.routers.auth-gateway-service.tls=true"
+  smartqa-vector-service:
+    build: ./smartqa-vector-service
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - ./smartqa-vector-service/.env
+    depends_on:
+      consul:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.smartqa-vector-service.entrypoints=websecure"
+      - "traefik.http.routers.smartqa-vector-service.tls=true"
+      - "traefik.http.routers.smartqa-vector-service.middlewares=secure-api@file"
 
-    traefik:
-      image: traefik:v3.6
-      container_name: traefik
-      restart: unless-stopped
-      security_opt:
-        - no-new-privileges:true
+  auth-gateway-service:
+    build: ./auth-gateway
+    depends_on:
+      consul:
+        condition: service_healthy
+      # kafka:
+      #   condition: service_healthy      # ← waits for Kafka to be ready
+      # kafka-init:
+      #   condition: service_completed_successfully  # ← waits for topics to be created
+    ports:
+      - "8001:8001"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - ./auth-gateway/.env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth-gateway-service.rule=PathPrefix(`/auth`)"
+      - "traefik.http.routers.auth-gateway-service.entrypoints=websecure"
+      - "traefik.http.routers.auth-gateway-service.tls=true"
 
-      # networks:
-      #  # Connect to the 'traefik_proxy' overlay network for inter-container communication across nodes
-      #   - proxy
+  traefik:
+    image: traefik:v3.6
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
 
-      ports:
-        - "80:80"
-        - "443:443"
+    # networks:
+    #  # Connect to the 'traefik_proxy' overlay network for inter-container communication across nodes
+    #   - proxy
 
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock:ro
-        - ./certs:/certs:ro
-        - ./dynamic:/dynamic:ro
+    ports:
+      - "80:80"
+      - "443:443"
 
-      command:
-        # EntryPoints
-        - "--entrypoints.web.address=:80"
-        - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-        - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
-        - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
-        - "--entrypoints.websecure.address=:443"
-        - "--entrypoints.websecure.http.tls=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./certs:/certs:ro
+      - ./dynamic:/dynamic:ro
 
-        - "--providers.file.directory=/dynamic"
+    command:
+      # EntryPoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls=true"
 
-        # Providers
-        - "--providers.docker=true"
-        - "--providers.docker.exposedbydefault=false"
-        - "--providers.docker.network=smart_qa_microservices_default"
+      - "--providers.file.directory=/dynamic"
 
-        # API & Dashboard
-        - "--api.dashboard=true"
-        - "--api.insecure=false"
+      # Providers
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=smart_qa_microservices_default"
 
-        # Observability
-        - "--log.level=INFO"
-        - "--accesslog=true"
-        - "--metrics.prometheus=true"
+      # API & Dashboard
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
 
-        # community jwt plugin
-        - "--experimental.plugins.jwt.modulename=github.com/agilezebra/jwt-middleware"
-        - "--experimental.plugins.jwt.version=v1.3.7"
+      # Observability
+      - "--log.level=INFO"
+      - "--accesslog=true"
+      - "--metrics.prometheus=true"
 
-      # Traefik Dynamic configuration via Docker labels
-      labels:
-        # Enable self‑routing
-        - "traefik.enable=true"
+      # community jwt plugin
+      - "--experimental.plugins.jwt.modulename=github.com/agilezebra/jwt-middleware"
+      - "--experimental.plugins.jwt.version=v1.3.7"
 
-        # Dashboard router
-        - "traefik.http.routers.dashboard.rule=Host(`dashboard.docker.localhost`)"
-        - "traefik.http.routers.dashboard.entrypoints=websecure"
-        - "traefik.http.routers.dashboard.service=api@internal"
-        - "traefik.http.routers.dashboard.tls=true"
+    # Traefik Dynamic configuration via Docker labels
+    labels:
+      # Enable self‑routing
+      - "traefik.enable=true"
 
-        # Basic‑auth middleware
-        - "traefik.http.middlewares.dashboard-auth.basicauth.users=ezzdin:$$2a$$10$$.nV4Gfq6MwqBG1waB/RFGOf4aDy/cV0jajHVr3IqTWczsZNHsy1ty"
-        - "traefik.http.routers.dashboard.middlewares=dashboard-auth@docker"
+      # Dashboard router
+      - "traefik.http.routers.dashboard.rule=Host(`dashboard.docker.localhost`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.tls=true"
 
-    # #   # Keycloak
-    keycloak:
-      image: keycloak/keycloak:latest
-      container_name: keycloak
-      command: start-dev
-      environment:
-        - KEYCLOAK_ADMIN=admin
-        - KEYCLOAK_ADMIN_PASSWORD=adminpassword
-        - KC_DB=mysql
-        - KC_DB_URL=jdbc:mysql://mysql:3306/msdb
-        - KC_DB_USERNAME=univer
-        - KC_DB_PASSWORD=univer
-        - PROXY_ADDRESS_FORWARDING=true
-        # - KEYCLOAK_FRONTEND_URL=http://localhost:8180
-        # - KC_HOSTNAME=http://keycloak:8080  # Explicit hostname
-        - KC_HTTP_CORS_ORIGINS=http://localhost:5173
-        - KC_HTTP_CORS_ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS
-        - KC_HTTP_CORS_ALLOWED_HEADERS=*
-        - KC_HTTP_CORS_ALLOW_CREDENTIALS=true
-      volumes:
-        - keycloak_data:/opt/keycloak/data
-      ports:
-        - "8180:8080"
-      depends_on:
-        mysql:
-          condition: service_healthy
-      healthcheck:
-        test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
-        interval: 10s
-        timeout: 5s
-        retries: 10
-      restart: unless-stopped
+      # Basic‑auth middleware
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=ezzdin:$$2a$$10$$.nV4Gfq6MwqBG1waB/RFGOf4aDy/cV0jajHVr3IqTWczsZNHsy1ty"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth@docker"
 
-    # # MySQL
-    mysql:
-      container_name: ms_mysql
-      image: mysql:8.0
-      environment:
-        MYSQL_ROOT_PASSWORD: univer
-        MYSQL_DATABASE: msdb
-        MYSQL_USER: univer
-        MYSQL_PASSWORD: univer
-      volumes:
-        - mysql_data:/var/lib/mysql
-      ports:
-        - "3306:3306"
-      restart: unless-stopped
-      healthcheck:
-        test:
-          ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-puniver"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
-        start_period: 30s
+  # Keycloak
+  keycloak:
+    image: keycloak/keycloak:latest
+    container_name: keycloak
+    command: start-dev
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=adminpassword
+      - KC_DB=mysql
+      - KC_DB_URL=jdbc:mysql://mysql:3306/msdb
+      - KC_DB_USERNAME=univer
+      - KC_DB_PASSWORD=univer
+      - PROXY_ADDRESS_FORWARDING=true
+      # - KEYCLOAK_FRONTEND_URL=http://localhost:8180
+      # - KC_HOSTNAME=http://keycloak:8080  # Explicit hostname
+      - KC_HTTP_CORS_ORIGINS=http://localhost:5173
+      - KC_HTTP_CORS_ALLOWED_METHODS=GET,POST,PUT,DELETE,OPTIONS
+      - KC_HTTP_CORS_ALLOWED_HEADERS=*
+      - KC_HTTP_CORS_ALLOW_CREDENTIALS=true
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    ports:
+      - "8180:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
-    consul:
-      container_name: consul-service-discovery
-      image: hashicorp/consul:latest
-      ports:
-        - "8500:8500"
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD", "curl", "-f", "http://localhost:8500/v1/status/leader"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
-        start_period: 10s
+  # MySQL
+  mysql:
+    container_name: ms_mysql
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: univer
+      MYSQL_DATABASE: msdb
+      MYSQL_USER: univer
+      MYSQL_PASSWORD: univer
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-puniver"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  consul:
+    container_name: consul-service-discovery
+    image: hashicorp/consul:latest
+    ports:
+      - "8500:8500"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8500/v1/status/leader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   mongodb_data:

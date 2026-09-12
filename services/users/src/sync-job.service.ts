@@ -137,15 +137,16 @@ export class SyncJobService {
 
   // ── Helper ────────────────────────────────────────────────────────────────
 
-  computeNextSyncAt(frequency: SyncFrequency): Date {
-    const hoursMap: Record<SyncFrequency, number> = {
-      [SyncFrequency.ONE_HOUR]: 1,
-      [SyncFrequency.SIX_HOURS]: 6,
-      [SyncFrequency.TWELVE_HOURS]: 12,
-      [SyncFrequency.DAILY]: 24,
+  private computeNextSyncAt(frequency: SyncFrequency): Date {
+    const minutesMap: Record<SyncFrequency, number> = {
+      [SyncFrequency.FIVE_MIN]: 5,
+      [SyncFrequency.ONE_HOUR]: 60,
+      [SyncFrequency.SIX_HOURS]: 6 * 60,
+      [SyncFrequency.TWELVE_HOURS]: 12 * 60,
+      [SyncFrequency.DAILY]: 24 * 60,
     };
-    const now = new Date();
-    now.setHours(now.getHours() + hoursMap[frequency]);
-    return now;
+    const next = new Date();
+    next.setMinutes(next.getMinutes() + minutesMap[frequency]);
+    return next;
   }
 }
