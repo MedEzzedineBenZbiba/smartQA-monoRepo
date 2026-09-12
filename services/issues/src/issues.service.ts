@@ -1293,8 +1293,8 @@ export class IssuesService {
     token: string,
     clusterId: number,
   ): Promise<{ summary: string }> {
-    const payload = this.jwtService.decode<DecodedJwtPayload>(token);
-    const userId = payload.sub;
+    // const payload = this.jwtService.decode<DecodedJwtPayload>(token);
+    // const userId = payload.sub;
     const issues = await this.issueModel
       .find({
         cluster_id: clusterId,
