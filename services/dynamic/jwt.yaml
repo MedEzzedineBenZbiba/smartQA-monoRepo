@@ -4,6 +4,8 @@ http:
       plugin:
         jwt:
           issuers:
-            - "http://keycloak:8080/realms/smart_qa_assistant/"
-          # require:
-          #   azp: "my-client-id"
+            - issuer: http://localhost:8080/realms/smart_qa_assistant
+              jwks: http://keycloak:8080/realms/smart_qa_assistant/protocol/openid-connect/certs
+          require:
+            # add any claim requirements you need, e.g.:
+            # aud: your-client-id
