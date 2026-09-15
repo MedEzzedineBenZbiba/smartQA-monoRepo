@@ -1368,7 +1368,8 @@ export class IssuesService {
         cluster_label: issue.cluster_label ?? null,
       }));
 
-      const fastApiUrl = process.env.FASTAPI_URL ?? 'http://localhost:8000/api';
+      const fastApiUrl =
+        process.env.FASTAPI_URL ?? 'http://smartqa-vector-service:8000/api';
 
       const res = await fetch(`${fastApiUrl}/chat-rag`, {
         method: 'POST',
