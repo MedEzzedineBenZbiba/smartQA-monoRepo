@@ -2,7 +2,8 @@ import { getAccessTokenServer } from "@/lib/getAccessToken.server";
 import { AiInsightClient, type ClusterSummary } from "./Aiinsightclient";
 import { QaInsightExtras } from "./QaInsightExtras";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8003";
+// const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8003";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://localhost";
 
 import type { Metadata } from "next";
 

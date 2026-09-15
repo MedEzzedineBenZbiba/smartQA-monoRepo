@@ -32,10 +32,12 @@ import {
   getIssuesDashboardStats,
   getQADashboardStats,
 } from "@/services/issues.service";
+import { getAccessTokenClient } from "@/lib/getAccessToken.client";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = "http://localhost:8003";
+// const API_BASE = "http://localhost:8003";
+const API_BASE = "https://localhost";
 
 const ROLE_COLORS: Record<string, { bg: string; text: string; label: string }> =
   {
@@ -318,7 +320,11 @@ function SEDashboard({ stats }: { stats: IssueDashboardStats }) {
   async function handleCluster() {
     setClustering("running");
     try {
-      const res = await fetch(`${API_BASE}/issues/cluster`, { method: "POST" });
+      const token = await getAccessTokenClient();
+      const res = await fetch(`${API_BASE}/issues/cluster`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) throw new Error("Cluster request failed");
       setClustering("done");
     } catch {

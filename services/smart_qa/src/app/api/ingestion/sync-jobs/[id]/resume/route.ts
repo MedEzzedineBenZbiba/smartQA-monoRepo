@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTokenFromSession } from "@/lib/getTokenFromSession";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8002";
+// const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8002";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost";
 
 export async function POST(
   _req: NextRequest,

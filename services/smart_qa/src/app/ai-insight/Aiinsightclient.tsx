@@ -627,12 +627,16 @@ export function AiInsightClient({
     "idle",
   );
 
-  const API_BASE = "http://localhost:8003";
+  const API_BASE = "https://localhost";
 
   async function handleCluster() {
     setClustering("running");
     try {
-      const res = await fetch(`${API_BASE}/issues/cluster`, { method: "POST" });
+      const token = await getAccessTokenClient();
+      const res = await fetch(`${API_BASE}/issues/cluster`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) throw new Error("Cluster request failed");
       setClustering("done");
     } catch {
@@ -649,8 +653,7 @@ export function AiInsightClient({
     }));
     try {
       const token = getAccessTokenClient();
-      const API_BASE =
-        process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8003";
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://localhost";
       const res = await fetch(
         `${API_BASE}/issues/clusters/${clusterId}/summarize`,
         { method: "POST", headers: { Authorization: `Bearer ${token}` } },

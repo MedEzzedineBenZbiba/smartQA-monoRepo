@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { decrypt } from "@/lib/encryptSession";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8002";
+// const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8002";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost";
 
 interface DecryptedSession {
   access_token?: string;

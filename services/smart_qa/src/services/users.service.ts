@@ -1,3 +1,4 @@
+import { getAccessTokenClient } from "@/lib/getAccessToken.client";
 import { DashboardStats, Employee } from "@/types/employee.type";
 import { SessionData } from "@/types/sessionData.type";
 import axios from "axios";
@@ -11,7 +12,8 @@ export type PaginatedUsers = {
 };
 
 const agent = new https.Agent({ rejectUnauthorized: false });
-const BASE_URL = "http://localhost:8004";
+// const BASE_URL = "http://localhost:8004";
+const BASE_URL = "https://localhost";
 
 const axiosInstance = axios.create({
   baseURL: BASE_URL,
@@ -34,11 +36,12 @@ export async function getUsers(
 
     roles.forEach((role) => params.append("roles", role));
 
+    const token = await getAccessTokenClient();
     const response = await axios.get<PaginatedUsers>(
       `${BASE_URL}/users?${params.toString()}`,
       {
         httpsAgent: agent,
-        headers: { "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${token}` },
       },
     );
     return response.data;
@@ -51,8 +54,13 @@ export async function getUsers(
 
 export async function getDashboardStats(): Promise<DashboardStats | undefined> {
   try {
+    const token = await getAccessTokenClient();
+
     const response = await axiosInstance.get<DashboardStats>(
       "/users/stats/dashboard",
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
     );
     return response.data;
   } catch (error: unknown) {
@@ -79,8 +87,12 @@ export async function getGenderStats(): Promise<
 
 export async function getRecentHires(): Promise<Employee[] | undefined> {
   try {
+    const token = await getAccessTokenClient();
     const response = await axiosInstance.get<Employee[]>(
       "/users/stats/recent-hires",
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
     );
     return response.data;
   } catch (error: unknown) {
@@ -97,8 +109,18 @@ export async function getAuthentificatedUser(
   const id = decoded.sub;
 
   try {
+    // const response = await axios.get<Employee>(
+    //   `http://localhost:8004/users/${id}`,
+    // );
+
     const response = await axios.get<Employee>(
-      `http://localhost:8004/users/${id}`,
+      `https://localhost/users/${id}`,
+      {
+        httpsAgent: agent,
+        headers: {
+          Authorization: `Bearer ${sessionData.access_token}`,
+        },
+      },
     );
 
     return response.data;

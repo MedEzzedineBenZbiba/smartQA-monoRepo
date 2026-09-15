@@ -42,7 +42,7 @@ export function RepoFilter({
       setError("");
 
       try {
-        const result = await getRepos(token, searchTerm, pageNum, PAGE_SIZE);
+        const result = await getRepos(searchTerm, pageNum, PAGE_SIZE);
         setRepos((prev) => (append ? [...prev, ...result.data] : result.data));
         setTotal(result.total);
         setPage(pageNum);

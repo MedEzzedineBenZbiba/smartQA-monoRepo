@@ -1,7 +1,8 @@
 import { getAccessTokenClient } from "@/lib/getAccessToken.client";
 import type { Issue } from "@/types/issue.type";
 
-const API_BASE = "http://localhost:8003";
+// const API_BASE = "http://localhost:8003";
+const API_BASE = "https://localhost";
 
 export interface ClusterSummary {
   cluster_id: number;
@@ -103,6 +104,8 @@ export async function getIssues(
     ...(repos.length > 0 && { repos: repos.join(",") }), // ← added
   });
 
+  console.log("getIssues token:", token);
+
   const res = await fetch(`${API_BASE}/issues?${params}`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -112,13 +115,29 @@ export async function getIssues(
     cache: "no-store",
   });
 
-  if (res.status === 401) {
-    // bubble up so middleware / layout can redirect to login
-    throw new Error("UNAUTHORIZED");
-  }
-
   if (!res.ok) {
-    throw new Error(`Failed to fetch issues: ${res.statusText}`);
+    let details: unknown;
+    try {
+      details = await res.clone().json();
+    } catch {
+      details = await res.text().catch(() => null);
+    }
+
+    console.error("getIssues failed", {
+      status: res.status,
+      statusText: res.statusText,
+      url: res.url,
+      details,
+    });
+
+    if (res.status === 401) {
+      // bubble up so middleware / layout can redirect to login
+      throw new Error(`UNAUTHORIZED: ${JSON.stringify(details)}`);
+    }
+
+    throw new Error(
+      `Failed to fetch issues: ${res.status} ${res.statusText} — ${JSON.stringify(details)}`,
+    );
   }
 
   const json = await res.json();
@@ -199,11 +218,11 @@ export interface RepoListResult {
 }
 
 export async function getRepos(
-  token: string,
   search = "",
   page = 1,
   limit = 20,
 ): Promise<RepoListResult> {
+  const token = await getAccessTokenClient();
   const params = new URLSearchParams({
     search,
     page: String(page),

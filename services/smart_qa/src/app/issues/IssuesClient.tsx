@@ -342,7 +342,7 @@ export function IssuesClient({
                   "similarity_score" in issue ? issue.similarity_score : null;
                 // Repository isn't part of SearchedIssue — only shown for
                 // plain Issue rows.
-                const repo = "repo" in issue ? issue.repo : undefined;
+                const repo = getRepoFromUrl(issue.url);
 
                 return (
                   <tr
@@ -564,4 +564,13 @@ function Spinner() {
       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
     </svg>
   );
+}
+
+function getRepoFromUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  // Matches either:
+  //  - https://api.github.com/repos/owner/repo/issues/26
+  //  - https://github.com/owner/repo/issues/26
+  const match = url.match(/github\.com\/(?:repos\/)?([^/]+\/[^/]+)\/issues/);
+  return match?.[1];
 }

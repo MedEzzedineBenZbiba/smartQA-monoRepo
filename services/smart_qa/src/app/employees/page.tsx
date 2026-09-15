@@ -6,7 +6,7 @@ import Image from "next/image";
 
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 
-const LIMIT = 15;
+const LIMIT = 13;
 
 function useDebounce(
   value: string,

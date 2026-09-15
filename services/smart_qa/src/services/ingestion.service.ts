@@ -8,17 +8,23 @@ import { decrypt } from "@/lib/encryptSession";
 import { NextRequest, NextResponse } from "next/server";
 import { SessionData } from "@/types/sessionData.type";
 
+import { getAccessTokenServer } from "@/lib/getAccessToken.server";
+
 interface DecryptedSession {
   access_token: string;
 }
 
-const API_BASE = "http://localhost:8002";
+// const API_BASE = "http://localhost:8002";
+const API_BASE = "https://localhost";
 
 export async function getGithubAuthUrl(
   returnTo?: string,
 ): Promise<{ url: string }> {
+  const token = await getAccessTokenServer();
   const params = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : "";
-  const { data } = await axios.get(`${API_BASE}/ingestion/authorize${params}`);
+  const { data } = await axios.get(`${API_BASE}/ingestion/authorize${params}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   return { url: data.url };
 }
 
@@ -53,12 +59,12 @@ export async function syncIssues(): Promise<{ synced: number }> {
 }
 
 export async function getGithubStatus(): Promise<{ connected: boolean }> {
-  const session = (await cookies()).get("session")?.value ?? null;
-  let token = null;
-  if (session) {
-    const decryptSession = (await decrypt(session)) as SessionData;
-    token = decryptSession?.access_token;
-  }
+  // const session = (await cookies()).get("session")?.value ?? null;
+  let token = await getAccessTokenServer();
+  // if (session) {
+  //   const decryptSession = (await decrypt(session)) as SessionData;
+  //   token = decryptSession?.access_token;
+  // }
   const { data } = await axios.get(`${API_BASE}/ingestion/github/status`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
