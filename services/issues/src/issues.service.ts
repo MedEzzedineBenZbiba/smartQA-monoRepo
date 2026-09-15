@@ -1316,7 +1316,7 @@ export class IssuesService {
     });
 
     // const fastApiUrl = process.env.FASTAPI_URL ?? 'http://localhost:8000';
-    const fastApiUrl = 'https://smartqa-vector-service:8000';
+    const fastApiUrl = 'http://smartqa-vector-service:8000';
     const res = await fetch(`${fastApiUrl}/api/summarize-cluster`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
