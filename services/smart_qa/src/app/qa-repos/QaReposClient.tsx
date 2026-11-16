@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useCallback, useEffect } from "react";
 import { syncIssues } from "@/services/ingestion.service";
+import { getAccessTokenClient } from "@/lib/getAccessToken.client";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -180,9 +181,13 @@ export function QaReposClient({
     ) => {
       setError(null);
       try {
+        const token = await getAccessTokenClient();
         const res = await fetch("/api/ingestion/sync-jobs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({ repoName, orgName: org, repoUrl, frequency }),
         });
         if (!res.ok) throw new Error("Failed to create sync job");

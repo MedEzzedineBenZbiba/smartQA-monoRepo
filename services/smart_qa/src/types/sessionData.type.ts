@@ -1,7 +1,7 @@
 export type SessionData = {
   access_token: string;
-  expires_at_iso_format: number;
-  refresh_token: number;
-  refresh_expires_at_iso_format: number;
+  expire_at_unix_timestamp: number;
+  refresh_token: string;
+  refresh_expire_at_unix_timestamp: number;
   role: string[];
 };

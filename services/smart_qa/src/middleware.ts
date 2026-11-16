@@ -81,7 +81,7 @@ function setTokenCookies(
     httpOnly: true,
     secure: false,
     sameSite: "lax",
-    maxAge: refreshExpiresIn,
+    maxAge: expiresIn,
   });
 }
 
@@ -283,7 +283,7 @@ export async function middleware(request: NextRequest) {
       return clearSessionAndRedirect(request, LOGIN_PATH);
     }
 
-    const isSessionExpired = Date.now() > session.refresh_expires_at_iso_format;
+    const isSessionExpired = Date.now() > session.expire_at_unix_timestamp;
     console.log(
       "[middleware] session expired?",
       isSessionExpired,
@@ -294,12 +294,6 @@ export async function middleware(request: NextRequest) {
       console.log("[middleware] SE/QA → session expired → LOGIN_PATH");
       return clearSessionAndRedirect(request, LOGIN_PATH);
     }
-
-    // NOTE: this flow has no refresh-in-middleware step, since login.ts
-    // stores refresh_token but there's no server action here to call it.
-    // If access_token itself is expired but refresh_token isn't, requests
-    // relying on access_token will 401 downstream — that's a separate gap,
-    // flagging it rather than silently patching it in.
 
     if (isSEorQA(session.role) && pathname !== CONNECT_GITHUB_PATH) {
       const connected = await isGithubConnected();

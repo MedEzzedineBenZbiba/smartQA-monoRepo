@@ -10,6 +10,12 @@ interface PageProps {
   searchParams: Promise<{ returnTo?: string; github?: string }>;
 }
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "GitHub Connection",
+};
+
 export default async function ConnectGithubPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const returnTo = params.returnTo ?? "/dashboard";

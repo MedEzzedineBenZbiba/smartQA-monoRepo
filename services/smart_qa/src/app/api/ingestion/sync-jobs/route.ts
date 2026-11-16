@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { decrypt } from "@/lib/encryptSession";
 
 // const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8002";
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://localhost";
 
 interface DecryptedSession {
   access_token?: string;
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
   });
