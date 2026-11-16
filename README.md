@@ -47,7 +47,7 @@ Smart QA Assistant solves them by ingesting issues from an organization's GitHub
 
 ## 🎬 Demo
 
-> 📹 **Demo video:** `https://drive.google.com/file/d/1BBvHmWEmDvkeKvDdfzo39VXfYC61ASt4/view?usp=sharing`
+> 📹 **Demo video:** [Watch the demo video](https://drive.google.com/file/d/1BBvHmWEmDvkeKvDdfzo39VXfYC61ASt4/view?usp=sharing)
 
 <!--
 Pick ONE of the options below and delete the rest:
